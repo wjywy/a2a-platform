@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "a2a-platform.fullname" . }}
+  labels:
+    {{- include "a2a-platform.labels" . | nindent 4 }}
+data:
+  PLATFORM_ORIGIN: {{ .Values.config.platformOrigin | quote }}
+  CONSOLE_PUBLIC_ORIGIN: {{ .Values.config.consoleOrigin | quote }}
+  CONSOLE_ORIGINS: {{ .Values.config.consoleOrigins | quote }}
+  PLATFORM_JWT_ISSUER: {{ .Values.config.jwtIssuer | quote }}
+  LOCAL_LOGIN_ENABLED: {{ .Values.config.localLoginEnabled | quote }}
+  SELF_REGISTRATION_ENABLED: {{ .Values.config.selfRegistrationEnabled | quote }}
+  OIDC_ISSUER: {{ .Values.config.oidcIssuer | quote }}
+  OIDC_CLIENT_ID: {{ .Values.config.oidcClientId | quote }}
+  OIDC_REDIRECT_URI: {{ .Values.config.oidcRedirectUri | quote }}
+  SMTP_FROM: {{ .Values.config.smtpFrom | quote }}
+  HEALTH_CHECK_INTERVAL_MS: {{ .Values.config.healthCheckIntervalMs | quote }}
+  PUBLIC_AGENT_CATALOG: {{ .Values.config.publicAgentCatalog | quote }}
+  NODE_ENV: production

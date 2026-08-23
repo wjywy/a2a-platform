@@ -1,0 +1,23 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "a2a-platform.fullname" . }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "a2a-platform.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 3000 }
+        - { protocol: TCP, port: 80 }
+  egress:
+    - ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 6379 }
+{{- end }}

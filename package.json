@@ -1,0 +1,29 @@
+{
+  "name": "a2a-agent-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace @a2a-platform/api run dev",
+    "dev:console": "npm --workspace @a2a-platform/console run dev",
+    "dev:worker": "npm --workspace @a2a-platform/health-worker run dev",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspace @a2a-platform/api",
+    "test:e2e": "playwright test",
+    "migrate": "npm --workspace @a2a-platform/api run migrate",
+    "up": "docker compose -f infra/docker-compose.yml up --build",
+    "platform:up": "docker compose -f infra/docker-compose.yml up -d --build",
+    "platform:verify": "tsx scripts/verify-platform.ts",
+    "lines": "tsx scripts/count-effective-lines.ts",
+    "platform:logs": "docker compose -f infra/docker-compose.yml logs -f api worker",
+    "down": "docker compose -f infra/docker-compose.yml down"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.12"
+  }
+}

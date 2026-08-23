@@ -1,0 +1,49 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "a2a-platform.fullname" . }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ .Values.ingress.tlsSecretName }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # /agents is a console route; deeper /agents/{slug}/... paths are
+          # served by the A2A gateway below.
+          - path: /agents
+            pathType: Exact
+            backend:
+              service: { name: {{ include "a2a-platform.fullname" . }}-console, port: { number: 80 } }
+          - path: /agents/
+            pathType: Exact
+            backend:
+              service: { name: {{ include "a2a-platform.fullname" . }}-console, port: { number: 80 } }
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "a2a-platform.fullname" . }}-api, port: { number: 3000 } }
+          - path: /agents
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "a2a-platform.fullname" . }}-api, port: { number: 3000 } }
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "a2a-platform.fullname" . }}-api, port: { number: 3000 } }
+          - path: /healthz
+            pathType: Exact
+            backend:
+              service: { name: {{ include "a2a-platform.fullname" . }}-api, port: { number: 3000 } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "a2a-platform.fullname" . }}-console, port: { number: 80 } }
+{{- end }}

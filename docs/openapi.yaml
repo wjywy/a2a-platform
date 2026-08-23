@@ -1,0 +1,1492 @@
+openapi: 3.1.0
+info:
+  title: A2A Agent Platform API
+  version: 0.1.0
+  description: |
+    Multi-tenant management and external A2A gateway API. Management endpoints use
+    a console access token. Gateway endpoints use a tenant API Key. Protocol payloads
+    follow A2A Protocol v1.0 and are intentionally represented as open JSON schemas here.
+servers:
+  - url: http://localhost:8080
+    description: Local Docker Compose gateway
+security: []
+tags:
+  - { name: Authentication }
+  - { name: Tenants }
+  - { name: Agents }
+  - { name: API Keys }
+  - { name: Tasks }
+  - { name: Usage }
+  - { name: Webhooks }
+  - { name: Alerts }
+  - { name: Notifications }
+  - { name: A2A Gateway }
+paths:
+  /healthz:
+    get:
+      operationId: health
+      responses:
+        "200": { description: Process is alive }
+  /readyz:
+    get:
+      operationId: readiness
+      responses:
+        "200":
+          { description: "Database, Redis, migrations, and Worker are ready" }
+        "503": { description: A required dependency is not ready }
+  /api/auth/config:
+    get:
+      tags: [Authentication]
+      operationId: authConfig
+      responses:
+        "200":
+          description: Enabled sign-in methods
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthConfig" }
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200": { $ref: "#/components/responses/AuthSession" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/auth/register:
+    post:
+      tags: [Authentication]
+      operationId: selfRegister
+      description: Creates an unprivileged customer account and immediately starts a session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, displayName, password]
+              properties:
+                email: { type: string, format: email }
+                displayName: { type: string, minLength: 2, maxLength: 100 }
+                password: { type: string, format: password, minLength: 12 }
+      responses:
+        "201": { $ref: "#/components/responses/AuthSession" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /api/auth/refresh:
+    post:
+      tags: [Authentication]
+      operationId: refreshSession
+      description: Rotates the HttpOnly refresh cookie and returns a short-lived access token.
+      responses:
+        "200": { $ref: "#/components/responses/AuthSession" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logout
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "204": { description: Session revoked }
+  /api/auth/me:
+    get:
+      tags: [Authentication]
+      operationId: currentUser
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200":
+          description: User profile and tenant memberships
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  tenants:
+                    {
+                      type: array,
+                      items: { $ref: "#/components/schemas/Tenant" },
+                    }
+  /api/auth/invitations/{token}:
+    get:
+      tags: [Authentication]
+      operationId: inspectInvitation
+      parameters: [{ $ref: "#/components/parameters/InvitationToken" }]
+      responses:
+        "200": { description: Valid invitation metadata }
+        "410": { $ref: "#/components/responses/Error" }
+  /api/auth/invitations/{token}/activate:
+    post:
+      tags: [Authentication]
+      operationId: activateInvitation
+      parameters: [{ $ref: "#/components/parameters/InvitationToken" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName, password]
+              properties:
+                displayName: { type: string, minLength: 1 }
+                password: { type: string, format: password, minLength: 12 }
+      responses:
+        "200": { $ref: "#/components/responses/AuthSession" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/admin/tenants:
+    get:
+      tags: [Tenants]
+      operationId: listTenants
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/Page" },
+          { $ref: "#/components/parameters/PageSize" },
+        ]
+      responses:
+        "200": { description: Paginated tenants }
+    post:
+      tags: [Tenants]
+      operationId: createTenant
+      security: [{ ConsoleToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TenantInput" }
+      responses:
+        "201": { description: Tenant created }
+        "403": { $ref: "#/components/responses/Error" }
+  /api/admin/tenants/{tenantId}:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [Tenants]
+      operationId: getTenant
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200": { description: Tenant detail }
+    patch:
+      tags: [Tenants]
+      operationId: updateTenant
+      security: [{ ConsoleToken: [] }]
+      requestBody:
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/TenantInput" } },
+          }
+      responses:
+        "200": { description: Updated tenant }
+        "403": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: [Tenants]
+      operationId: deleteTenant
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "204": { description: Tenant deleted }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/admin/tenants/{tenantId}/members:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [Tenants]
+      operationId: listMembers
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200": { description: Tenant members }
+  /api/admin/tenants/{tenantId}/members/invite:
+    post:
+      tags: [Tenants]
+      operationId: inviteMember
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/TenantId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                displayName: { type: string }
+                role: { $ref: "#/components/schemas/TenantRole" }
+      responses:
+        "201": { description: Invitation; token is returned once }
+  /api/admin/tenants/{tenantId}/api-keys:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [API Keys]
+      operationId: listApiKeys
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200": { description: API keys without plaintext secrets }
+    post:
+      tags: [API Keys]
+      operationId: createApiKey
+      security: [{ ConsoleToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApiKeyInput" }
+      responses:
+        "201": { description: API Key; plaintext secret is returned once }
+  /api/admin/agents:
+    get:
+      tags: [Agents]
+      operationId: listAgents
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+        - { name: tenantId, in: query, schema: { type: string, format: uuid } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Visible logical Agents }
+    post:
+      tags: [Agents]
+      operationId: registerAgent
+      security: [{ ConsoleToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentInput" }
+      responses:
+        "201": { description: Card validated and Agent registered offline }
+        "422": { $ref: "#/components/responses/Error" }
+  /api/admin/agents/{slug}/instances:
+    parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+    get:
+      tags: [Agents]
+      operationId: listAgentInstances
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200": { description: Backends for a logical Agent }
+    post:
+      tags: [Agents]
+      operationId: createAgentInstance
+      security: [{ ConsoleToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentInstanceInput" }
+      responses:
+        "201":
+          { description: Instance created with encrypted upstream credentials }
+  /api/admin/tasks:
+    get:
+      tags: [Tasks]
+      operationId: searchTasks
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+        - { name: tenantId, in: query, schema: { type: string, format: uuid } }
+        - { name: agentId, in: query, schema: { type: string, format: uuid } }
+        - { name: state, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Paginated task snapshots }
+  /api/admin/tasks/{taskId}:
+    get:
+      tags: [Tasks]
+      operationId: getTaskDetail
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        [{ name: taskId, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200":
+          {
+            description: "Request, artifacts, state snapshot and event timeline",
+          }
+  /api/admin/usage:
+    get:
+      tags: [Usage]
+      operationId: searchUsage
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200": { description: Paginated usage records }
+  /api/admin/usage/summary:
+    get:
+      tags: [Usage]
+      operationId: usageSummary
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200":
+          { description: "Request count, failure rate, p95 latency and trend" }
+  /api/admin/notifications:
+    get:
+      tags: [Notifications]
+      operationId: searchNotifications
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200":
+          {
+            description: "Durable console, webhook and email notification records",
+          }
+  /api/admin/events:
+    get:
+      tags: [Notifications]
+      operationId: subscribePlatformEvents
+      security: [{ ConsoleToken: [] }]
+      description: Cross-instance Server-Sent Event feed, optionally restricted to a readable tenant.
+      responses:
+        "200":
+          {
+            description: Platform SSE event stream,
+            content: { text/event-stream: { schema: { type: string } } },
+          }
+  /api/admin/users:
+    get:
+      tags: [Authentication]
+      operationId: listPlatformUsers
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Platform users } }
+    post:
+      tags: [Authentication]
+      operationId: createPlatformUser
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "201": { description: Platform user created },
+          "403": { $ref: "#/components/responses/Error" },
+        }
+  /api/admin/users/{userId}/status:
+    post:
+      tags: [Authentication]
+      operationId: changePlatformUserStatus
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        [
+          {
+            name: userId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        {
+          "200": { description: User enabled or disabled },
+          "403": { $ref: "#/components/responses/Error" },
+        }
+  /api/admin/tenants/{tenantId}/status:
+    post:
+      tags: [Tenants]
+      operationId: changeTenantStatus
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/TenantId" }]
+      responses: { "200": { description: Tenant activated or suspended } }
+  /api/admin/tenants/{tenantId}/members/{memberId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - {
+          name: memberId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    patch:
+      tags: [Tenants]
+      operationId: updateTenantMember
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200": { description: Member role or status updated },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+    delete:
+      tags: [Tenants]
+      operationId: removeTenantMember
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "204": { description: Member removed },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+  /api/admin/tenants/{tenantId}/api-keys/{keyId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - {
+          name: keyId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    get:
+      tags: [API Keys]
+      operationId: getApiKey
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            {
+              description: "API key metadata and Agent grants, never plaintext",
+            },
+        }
+    patch:
+      tags: [API Keys]
+      operationId: updateApiKey
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            {
+              description: "API key metadata, quotas, scopes and grants updated",
+            },
+        }
+  /api/admin/tenants/{tenantId}/api-keys/{keyId}/revoke:
+    post:
+      tags: [API Keys]
+      operationId: revokeApiKey
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/TenantId" }
+        - {
+            name: keyId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses: { "200": { description: API key irrevocably revoked } }
+  /api/admin/agents/{slug}:
+    parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+    get:
+      tags: [Agents]
+      operationId: getAgent
+      security: [{ ConsoleToken: [] }]
+      responses:
+        { "200": { description: Logical Agent detail and current Card } }
+    patch:
+      tags: [Agents]
+      operationId: updateAgent
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Agent policy and metadata updated } }
+    delete:
+      tags: [Agents]
+      operationId: deleteAgent
+      security: [{ ConsoleToken: [] }]
+      responses: { "204": { description: Agent soft-deleted } }
+  /api/admin/agents/{slug}/status:
+    post:
+      tags: [Agents]
+      operationId: changeAgentStatus
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses:
+        {
+          "200":
+            {
+              description: Platform traffic enabled or disabled; remote processes are not stopped,
+            },
+        }
+  /api/admin/agents/{slug}/refresh-card:
+    post:
+      tags: [Agents]
+      operationId: refreshAgentCard
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses:
+        { "200": { description: Card revalidated with a capability diff } }
+  /api/admin/agents/{slug}/card-revisions:
+    get:
+      tags: [Agents]
+      operationId: listAgentCardRevisions
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses:
+        { "200": { description: Card history and capability differences } }
+  /api/admin/agents/{slug}/instances/{instanceId}:
+    parameters:
+      - { $ref: "#/components/parameters/AgentSlug" }
+      - {
+          name: instanceId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    patch:
+      tags: [Agents]
+      operationId: updateAgentInstance
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            {
+              description: "Instance routing, state, Card URL or encrypted credential updated",
+            },
+        }
+    delete:
+      tags: [Agents]
+      operationId: deleteAgentInstance
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "204":
+            {
+              description: Instance deleted when no active task lease requires it,
+            },
+        }
+  /api/admin/agents/{slug}/instances/{instanceId}/health-check:
+    post:
+      tags: [Agents]
+      operationId: checkAgentInstanceHealth
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/AgentSlug" }
+        - {
+            name: instanceId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        { "200": { description: Parent-scoped instance health check result } }
+  /api/admin/agents/{slug}/health:
+    get:
+      tags: [Agents]
+      operationId: listAgentHealthHistory
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses:
+        { "200": { description: Logical and per-instance health history } }
+  /api/admin/tasks/{taskId}/events.json:
+    get:
+      tags: [Tasks]
+      operationId: downloadTaskEvents
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        [{ name: taskId, in: path, required: true, schema: { type: integer } }]
+      responses: { "200": { description: Downloadable event timeline JSON } }
+  /api/admin/usage/export.csv:
+    get:
+      tags: [Usage]
+      operationId: exportUsageCsv
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            {
+              description: Filtered usage export,
+              content: { text/csv: { schema: { type: string } } },
+            },
+        }
+  /api/admin/tenants/{tenantId}/webhooks:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [Webhooks]
+      operationId: listWebhooks
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            { description: Tenant Webhook endpoints without signing secrets },
+        }
+    post:
+      tags: [Webhooks]
+      operationId: createWebhook
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "201": { description: Webhook created; signing secret returned once },
+        }
+  /api/admin/tenants/{tenantId}/webhooks/{webhookId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - {
+          name: webhookId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    get:
+      tags: [Webhooks]
+      operationId: getWebhook
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Webhook metadata } }
+    patch:
+      tags: [Webhooks]
+      operationId: updateWebhook
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Webhook configuration updated } }
+    delete:
+      tags: [Webhooks]
+      operationId: deleteWebhook
+      security: [{ ConsoleToken: [] }]
+      responses: { "204": { description: Webhook soft-deleted } }
+  /api/admin/tenants/{tenantId}/webhooks/{webhookId}/rotate-secret:
+    post:
+      tags: [Webhooks]
+      operationId: rotateWebhookSecret
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/TenantId" }
+        - {
+            name: webhookId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses: { "200": { description: New signing secret returned once } }
+  /api/admin/tenants/{tenantId}/webhooks/{webhookId}/deliveries:
+    get:
+      tags: [Webhooks]
+      operationId: listWebhookDeliveries
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/TenantId" }
+        - {
+            name: webhookId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        {
+          "200":
+            {
+              description: "Attempts, HTTP results, retry schedule and dead letters",
+            },
+        }
+  /api/admin/tenants/{tenantId}/notification-channels:
+    parameters: [{ $ref: "#/components/parameters/TenantId" }]
+    get:
+      tags: [Notifications]
+      operationId: listNotificationChannels
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            { description: Email and signed Webhook notification channels },
+        }
+    post:
+      tags: [Notifications]
+      operationId: createNotificationChannel
+      security: [{ ConsoleToken: [] }]
+      responses: { "201": { description: Notification channel created } }
+  /api/admin/alerts/rules:
+    get:
+      tags: [Alerts]
+      operationId: listAlertRules
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Tenant-visible alert rules } }
+    post:
+      tags: [Alerts]
+      operationId: createAlertRule
+      security: [{ ConsoleToken: [] }]
+      responses: { "201": { description: Alert rule created } }
+  /api/admin/alerts/rules/{ruleId}:
+    parameters:
+      [
+        {
+          name: ruleId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        },
+      ]
+    get:
+      tags: [Alerts]
+      operationId: getAlertRule
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Alert rule detail } }
+    patch:
+      tags: [Alerts]
+      operationId: updateAlertRule
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Alert rule updated } }
+    delete:
+      tags: [Alerts]
+      operationId: deleteAlertRule
+      security: [{ ConsoleToken: [] }]
+      responses: { "204": { description: Alert rule deleted } }
+  /api/admin/alerts/events:
+    get:
+      tags: [Alerts]
+      operationId: listAlertEvents
+      security: [{ ConsoleToken: [] }]
+      responses:
+        "200":
+          {
+            description: "Triggered, recovered, acknowledged and silenced alerts",
+          }
+  /api/admin/alerts/events/{eventId}/acknowledge:
+    post:
+      tags: [Alerts]
+      operationId: acknowledgeAlert
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        [
+          {
+            name: eventId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses: { "200": { description: Alert acknowledged } }
+  /api/admin/alerts/events/{eventId}/silence:
+    post:
+      tags: [Alerts]
+      operationId: silenceAlert
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        [
+          {
+            name: eventId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        { "200": { description: Alert silenced until the requested time } }
+  /api/admin/audit:
+    get:
+      tags: [Tenants]
+      operationId: searchAuditLog
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            { description: Tenant-isolated immutable operation audit records },
+        }
+  /api/admin/settings:
+    get:
+      tags: [Authentication]
+      operationId: listPlatformSettings
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            { description: Effective runtime settings and source metadata },
+        }
+  /api/admin/settings/{key}:
+    parameters:
+      [{ name: key, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [Authentication]
+      operationId: getPlatformSetting
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Effective runtime setting } }
+    put:
+      tags: [Authentication]
+      operationId: updatePlatformSetting
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Runtime setting updated } }
+  /v1/agents:
+    get:
+      tags: [A2A Gateway]
+      operationId: externalAgentCatalog
+      security: [{ TenantApiKey: [] }]
+      responses:
+        "200": { description: Agents visible to this API Key }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/catalog/agents:
+    get:
+      tags: [Agents]
+      operationId: authenticatedAgentCatalog
+      security: [{ ConsoleToken: [] }]
+      description: Returns public Agents plus Agents owned by or granted to the caller's active tenant memberships. Upstream addresses are always replaced with platform proxy addresses.
+      parameters:
+        - { name: tenantId, in: query, schema: { type: string, format: uuid } }
+        - { name: search, in: query, schema: { type: string, maxLength: 100 } }
+        - {
+            name: status,
+            in: query,
+            schema: { type: string, enum: [draft, offline, online, degraded] },
+          }
+      responses:
+        "200":
+          description: "Safe, permission-filtered Agent catalog"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogAgentPage" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/usage:
+    get:
+      tags: [A2A Gateway]
+      operationId: externalUsage
+      security: [{ TenantApiKey: [] }]
+      description: Requires the usage:read scope and returns only this key's records.
+      responses:
+        "200": { description: Caller-scoped usage records }
+        "403": { $ref: "#/components/responses/Error" }
+  /v1/usage/summary:
+    get:
+      tags: [A2A Gateway]
+      operationId: externalUsageSummary
+      security: [{ TenantApiKey: [] }]
+      responses:
+        { "200": { description: Caller-scoped quota and usage summary } }
+  /v1/usage/export.csv:
+    get:
+      tags: [A2A Gateway]
+      operationId: externalUsageExport
+      security: [{ TenantApiKey: [] }]
+      responses:
+        {
+          "200":
+            {
+              description: Caller-scoped usage CSV,
+              content: { text/csv: { schema: { type: string } } },
+            },
+        }
+  /agents/{slug}/.well-known/agent-card.json:
+    get:
+      tags: [A2A Gateway]
+      operationId: agentCard
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses:
+        "200":
+          {
+            description: Platform proxy Agent Card with REST and JSON-RPC interfaces,
+          }
+        "503": { $ref: "#/components/responses/Error" }
+  /agents/{slug}/a2a/rest/message:send:
+    post:
+      tags: [A2A Gateway]
+      operationId: sendMessage
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              { schema: { type: object, additionalProperties: true } },
+          }
+      responses:
+        "200": { description: A2A Message or Task response }
+        "429": { $ref: "#/components/responses/QuotaError" }
+  /agents/{slug}/a2a/rest/message:stream:
+    post:
+      tags: [A2A Gateway]
+      operationId: streamMessage
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses:
+        "200":
+          description: A2A Server-Sent Event stream
+          content: { text/event-stream: { schema: { type: string } } }
+        "429": { $ref: "#/components/responses/QuotaError" }
+  /agents/{slug}/a2a/rest/tasks:
+    get:
+      tags: [A2A Gateway]
+      operationId: listTasks
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses:
+        {
+          "200":
+            {
+              description: Platform-aggregated tenant Task list with stable pagination,
+            },
+        }
+  /agents/{slug}/a2a/rest/tasks/{taskId}:
+    get:
+      tags: [A2A Gateway]
+      operationId: getTask
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/AgentSlug" }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        {
+          "200": { description: Task read from its bound upstream instance },
+          "404": { $ref: "#/components/responses/Error" },
+        }
+  /agents/{slug}/a2a/rest/tasks/{taskId}:cancel:
+    post:
+      tags: [A2A Gateway]
+      operationId: cancelTask
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/AgentSlug" }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        {
+          "200":
+            { description: Cancellation forwarded to the Task-bound instance },
+        }
+  /agents/{slug}/a2a/rest/tasks/{taskId}:subscribe:
+    get:
+      tags: [A2A Gateway]
+      operationId: subscribeTask
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/AgentSlug" }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        {
+          "200":
+            {
+              description: Task SSE stream from its bound instance,
+              content: { text/event-stream: { schema: { type: string } } },
+            },
+        }
+    post:
+      tags: [A2A Gateway]
+      operationId: subscribeTaskPost
+      security: [{ TenantApiKey: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/AgentSlug" }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        { "200": { description: POST-compatible Task SSE subscription } }
+  /agents/{slug}/a2a/jsonrpc:
+    post:
+      tags: [A2A Gateway]
+      operationId: jsonRpc
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jsonrpc, id, method]
+              properties:
+                jsonrpc: { const: "2.0" }
+                id: { oneOf: [{ type: string }, { type: integer }] }
+                method:
+                  enum:
+                    [
+                      GetExtendedAgentCard,
+                      SendMessage,
+                      SendStreamingMessage,
+                      GetTask,
+                      ListTasks,
+                      CancelTask,
+                      SubscribeToTask,
+                      CreateTaskPushNotificationConfig,
+                      GetTaskPushNotificationConfig,
+                      ListTaskPushNotificationConfigs,
+                      DeleteTaskPushNotificationConfig,
+                    ]
+                params: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          { description: JSON-RPC result or SSE stream for streaming methods }
+  /api/auth/oidc/start:
+    get:
+      tags: [Authentication]
+      operationId: startOidcLogin
+      responses:
+        {
+          "200": { description: OIDC authorization URL with PKCE state cookie },
+        }
+  /api/auth/oidc/callback:
+    get:
+      tags: [Authentication]
+      operationId: oidcCallback
+      responses:
+        {
+          "302":
+            {
+              description: Redirect to the console with a one-time exchange code,
+            },
+        }
+  /api/auth/oidc/exchange:
+    post:
+      tags: [Authentication]
+      operationId: exchangeOidcCode
+      responses:
+        {
+          "200": { $ref: "#/components/responses/AuthSession" },
+          "401": { $ref: "#/components/responses/Error" },
+        }
+  /api/admin/session:
+    get:
+      tags: [Authentication]
+      operationId: adminSession
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Current management principal } }
+  /api/admin/me/tenants:
+    get:
+      tags: [Tenants]
+      operationId: currentUserTenants
+      security: [{ ConsoleToken: [] }]
+      responses:
+        {
+          "200":
+            { description: Active tenant memberships for the current user },
+        }
+  /api/admin/dashboard:
+    get:
+      tags: [Usage]
+      operationId: dashboard
+      security: [{ ConsoleToken: [] }]
+      responses:
+        { "200": { description: Tenant-scoped operational and usage summary } }
+  /api/admin/invitations/{token}/accept:
+    post:
+      tags: [Tenants]
+      operationId: acceptInvitationForExistingUser
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/InvitationToken" }]
+      responses:
+        {
+          "200":
+            {
+              description: Invitation accepted by the authenticated matching email,
+            },
+        }
+  /api/admin/users/{userId}/password:
+    post:
+      tags: [Authentication]
+      operationId: resetPlatformUserPassword
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        [
+          {
+            name: userId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        { "204": { description: Password reset and prior sessions revoked } }
+  /api/admin/tenants/{tenantId}/invitations:
+    get:
+      tags: [Tenants]
+      operationId: listTenantInvitations
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/TenantId" }]
+      responses: { "200": { description: Tenant invitation history } }
+  /api/admin/tenants/{tenantId}/invitations/{invitationId}:
+    delete:
+      tags: [Tenants]
+      operationId: revokeTenantInvitation
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/TenantId" }
+        - {
+            name: invitationId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses: { "204": { description: Pending invitation revoked } }
+  /api/admin/agents/{slug}/health-check:
+    post:
+      tags: [Agents]
+      operationId: checkAgentHealth
+      security: [{ ConsoleToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses:
+        {
+          "200":
+            { description: Instances checked and aggregate health refreshed },
+        }
+  /api/admin/tenants/{tenantId}/webhooks/{webhookId}/test:
+    post:
+      tags: [Webhooks]
+      operationId: testWebhook
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/TenantId" }
+        - {
+            name: webhookId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses: { "202": { description: Signed test delivery enqueued } }
+  /api/admin/tenants/{tenantId}/webhook-deliveries/{deliveryId}/replay:
+    post:
+      tags: [Webhooks]
+      operationId: replayWebhookDelivery
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/TenantId" }
+        - {
+            name: deliveryId,
+            in: path,
+            required: true,
+            schema: { type: integer },
+          }
+      responses: { "202": { description: Failed delivery reset for retry } }
+  /api/admin/tenants/{tenantId}/notification-channels/{channelId}:
+    parameters:
+      - { $ref: "#/components/parameters/TenantId" }
+      - {
+          name: channelId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        }
+    patch:
+      tags: [Notifications]
+      operationId: updateNotificationChannel
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Notification channel updated } }
+    delete:
+      tags: [Notifications]
+      operationId: deleteNotificationChannel
+      security: [{ ConsoleToken: [] }]
+      responses: { "204": { description: Notification channel deleted } }
+  /api/admin/tenants/{tenantId}/notification-channels/{channelId}/rotate-secret:
+    post:
+      tags: [Notifications]
+      operationId: rotateNotificationChannelSecret
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/TenantId" }
+        - {
+            name: channelId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses: { "200": { description: New signing secret returned once } }
+  /api/admin/tenants/{tenantId}/notification-channels/{channelId}/test:
+    post:
+      tags: [Notifications]
+      operationId: testNotificationChannel
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/TenantId" }
+        - {
+            name: channelId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses: { "202": { description: Test notification enqueued } }
+  /api/admin/notifications/{notificationId}/replay:
+    post:
+      tags: [Notifications]
+      operationId: replayNotification
+      security: [{ ConsoleToken: [] }]
+      parameters:
+        [
+          {
+            name: notificationId,
+            in: path,
+            required: true,
+            schema: { type: integer },
+          },
+        ]
+      responses: { "202": { description: Failed notification reset for retry } }
+  /api/admin/audit/actions:
+    get:
+      tags: [Tenants]
+      operationId: listAuditActions
+      security: [{ ConsoleToken: [] }]
+      responses: { "200": { description: Distinct visible audit action names } }
+  /v1/agents/{slug}:
+    get:
+      tags: [A2A Gateway]
+      operationId: externalAgentDetail
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses: { "200": { description: API-Key-visible Agent metadata } }
+  /agents/{slug}/a2a/rest/extendedAgentCard:
+    get:
+      tags: [A2A Gateway]
+      operationId: extendedAgentCard
+      security: [{ TenantApiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/AgentSlug" }]
+      responses: { "200": { description: Authenticated extended Agent Card } }
+  /agents/{slug}/a2a/rest/tasks/{taskId}/pushNotificationConfigs:
+    parameters:
+      - { $ref: "#/components/parameters/AgentSlug" }
+      - { name: taskId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [A2A Gateway]
+      operationId: listTaskPushNotificationConfigs
+      security: [{ TenantApiKey: [] }]
+      responses: { "200": { description: Push notification configurations } }
+    post:
+      tags: [A2A Gateway]
+      operationId: createTaskPushNotificationConfig
+      security: [{ TenantApiKey: [] }]
+      responses:
+        { "200": { description: Push notification configuration created } }
+  /agents/{slug}/a2a/rest/tasks/{taskId}/pushNotificationConfigs/{configId}:
+    parameters:
+      - { $ref: "#/components/parameters/AgentSlug" }
+      - { name: taskId, in: path, required: true, schema: { type: string } }
+      - { name: configId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [A2A Gateway]
+      operationId: getTaskPushNotificationConfig
+      security: [{ TenantApiKey: [] }]
+      responses: { "200": { description: Push notification configuration } }
+    delete:
+      tags: [A2A Gateway]
+      operationId: deleteTaskPushNotificationConfig
+      security: [{ TenantApiKey: [] }]
+      responses:
+        { "204": { description: Push notification configuration removed } }
+components:
+  securitySchemes:
+    ConsoleToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    TenantApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    TenantId:
+      {
+        name: tenantId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    AgentSlug:
+      {
+        name: slug,
+        in: path,
+        required: true,
+        schema: { type: string, pattern: "^[a-z0-9-]{3,64}$" },
+      }
+    InvitationToken:
+      {
+        name: token,
+        in: path,
+        required: true,
+        schema: { type: string, minLength: 16 },
+      }
+    Page:
+      {
+        name: page,
+        in: query,
+        schema: { type: integer, minimum: 1, default: 1 },
+      }
+    PageSize:
+      {
+        name: pageSize,
+        in: query,
+        schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
+      }
+  responses:
+    AuthSession:
+      description: Authenticated session; refresh token is an HttpOnly cookie
+      headers:
+        Set-Cookie: { schema: { type: string } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              accessToken: { type: string }
+              accessTokenExpiresIn: { type: integer }
+              refreshTokenExpiresAt: { type: string, format: date-time }
+              user: { $ref: "#/components/schemas/User" }
+    Error:
+      description: Structured platform error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    QuotaError:
+      description: Tenant, API Key, Agent or concurrent quota exceeded
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    AuthConfig:
+      type: object
+      required: [localLoginEnabled, selfRegistrationEnabled, oidcEnabled]
+      properties:
+        localLoginEnabled: { type: boolean }
+        selfRegistrationEnabled: { type: boolean }
+        oidcEnabled: { type: boolean }
+        issuer: { type: string, format: uri }
+    User:
+      type: object
+      required: [id, email, displayName, status, emailVerified]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        platformRole: { type: string, enum: [platform_admin] }
+        status: { type: string, enum: [active, disabled] }
+        emailVerified: { type: boolean }
+    TenantRole:
+      type: string
+      enum: [tenant_admin, developer, viewer]
+    Tenant:
+      type: object
+      required: [id, slug, displayName, status]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        displayName: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [active, suspended] }
+        role: { $ref: "#/components/schemas/TenantRole" }
+        minuteRequestLimit: { type: integer }
+        dailyRequestLimit: { type: integer }
+        monthlyRequestLimit: { type: integer }
+        concurrentRequestLimit: { type: integer }
+        dataRetentionDays: { type: integer, minimum: 7, maximum: 3650 }
+    TenantInput:
+      type: object
+      properties:
+        slug: { type: string, pattern: "^[a-z0-9][a-z0-9-]{1,62}$" }
+        displayName: { type: string, minLength: 2 }
+        description: { type: string }
+        minuteRequestLimit: { type: integer, minimum: 1 }
+        dailyRequestLimit: { type: integer, minimum: 1 }
+        monthlyRequestLimit: { type: integer, minimum: 1 }
+        concurrentRequestLimit: { type: integer, minimum: 1 }
+        warningThresholdPercent: { type: integer, minimum: 1, maximum: 100 }
+        dataRetentionDays: { type: integer, minimum: 7, maximum: 3650 }
+    ApiKeyInput:
+      type: object
+      required: [name, scopes]
+      properties:
+        name: { type: string, minLength: 2 }
+        description: { type: string }
+        scopes:
+          type: array
+          minItems: 1
+          items: { enum: [agent:invoke, task:read, task:cancel, usage:read] }
+        agentIds: { type: array, items: { type: string, format: uuid } }
+        expiresAt: { type: [string, "null"], format: date-time }
+        minuteRequestLimit: { type: [integer, "null"], minimum: 1 }
+        dailyRequestLimit: { type: [integer, "null"], minimum: 1 }
+        monthlyRequestLimit: { type: [integer, "null"], minimum: 1 }
+        concurrentRequestLimit: { type: [integer, "null"], minimum: 1 }
+    AgentInput:
+      type: object
+      required: [slug, displayName, cardUrl, tenantId]
+      properties:
+        slug: { type: string, pattern: "^[a-z0-9-]{3,64}$" }
+        displayName: { type: string, minLength: 2 }
+        cardUrl: { type: string, format: uri }
+        tenantId: { type: string, format: uuid }
+        labels: { type: array, maxItems: 8, items: { type: string } }
+        visibility: { enum: [private, tenant, public] }
+        routingStrategy:
+          { enum: [weighted_round_robin, least_connections, priority] }
+    CatalogAgent:
+      type: object
+      required:
+        - id
+        - slug
+        - displayName
+        - description
+        - cardUrl
+        - status
+        - healthStatus
+        - labels
+        - visibility
+        - allowedTenantIds
+        - invocationPolicy
+        - routingStrategy
+        - selectedInterface
+        - version
+        - createdAt
+        - updatedAt
+        - access
+        - manageable
+        - administrable
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        displayName: { type: string }
+        description: { type: string }
+        cardUrl: { type: string, format: uri }
+        status: { enum: [draft, offline, online, degraded] }
+        healthStatus: { enum: [unknown, healthy, unhealthy] }
+        labels: { type: array, items: { type: string } }
+        tenantId: { type: string, format: uuid }
+        visibility: { enum: [private, tenant, public] }
+        allowedTenantIds:
+          description: Always empty in catalog responses; authorization grants are not exposed.
+          type: array
+          maxItems: 0
+          items: { type: string, format: uuid }
+        invocationPolicy:
+          type: object
+          required: [timeoutMs, maxRetries, maxConcurrent]
+          properties:
+            timeoutMs: { type: integer }
+            maxRetries: { type: integer }
+            maxConcurrent: { type: integer }
+        routingStrategy:
+          { enum: [weighted_round_robin, least_connections, priority] }
+        selectedInterface:
+          type: object
+          required: [url, protocolBinding, protocolVersion]
+          properties:
+            url: { type: string, format: uri }
+            protocolBinding: { const: HTTP+JSON }
+            protocolVersion: { const: "1.0" }
+        version: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        access: { enum: [public, tenant_owner, tenant_grant, platform_admin] }
+        manageable: { type: boolean }
+        administrable: { type: boolean }
+    CatalogAgentPage:
+      type: object
+      required: [items, page, pageSize, total, totalPages]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogAgent" }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 1 }
+    AgentInstanceInput:
+      type: object
+      required: [name, cardUrl]
+      properties:
+        name: { type: string }
+        cardUrl: { type: string, format: uri }
+        weight: { type: integer, minimum: 1, maximum: 10000 }
+        priority: { type: integer, minimum: 0, maximum: 10000 }
+        status: { enum: [active, draining, disabled] }
+        credential:
+          oneOf:
+            - { type: object, properties: { type: { const: none } } }
+            - {
+                type: object,
+                properties:
+                  {
+                    type: { const: bearer },
+                    token: { type: string, writeOnly: true },
+                  },
+              }
+            - {
+                type: object,
+                properties:
+                  {
+                    type: { const: api_key },
+                    headerName: { type: string },
+                    value: { type: string, writeOnly: true },
+                  },
+              }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+        requestId: { type: string }

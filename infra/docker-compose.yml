@@ -1,0 +1,148 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: a2a_platform
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d a2a_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/platform.Dockerfile
+    command: ["npm", "--workspace", "@a2a-platform/api", "run", "migrate"]
+    environment:
+      POSTGRES_URL: postgres://platform:platform@postgres:5432/a2a_platform
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-local-development-credential-key-change-before-deploy}
+      CREDENTIAL_KEY_VERSION: ${CREDENTIAL_KEY_VERSION:-v1}
+      CREDENTIAL_PREVIOUS_KEYS: ${CREDENTIAL_PREVIOUS_KEYS:-{}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/platform.Dockerfile
+    command: ["npm", "--workspace", "@a2a-platform/api", "run", "start"]
+    environment:
+      POSTGRES_URL: postgres://platform:platform@postgres:5432/a2a_platform
+      REDIS_URL: redis://redis:6379
+      PLATFORM_ORIGIN: http://localhost:8080
+      CONSOLE_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080
+      PLATFORM_DEV_TOKEN: ${PLATFORM_DEV_TOKEN:-dev-admin-token}
+      PLATFORM_JWT_SECRET: ${PLATFORM_JWT_SECRET:-local-development-jwt-secret-change-before-deploy}
+      PLATFORM_JWT_ISSUER: a2a-agent-platform
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-local-development-credential-key-change-before-deploy}
+      CREDENTIAL_KEY_VERSION: ${CREDENTIAL_KEY_VERSION:-v1}
+      CREDENTIAL_PREVIOUS_KEYS: ${CREDENTIAL_PREVIOUS_KEYS:-{}}
+      LOCAL_LOGIN_ENABLED: ${LOCAL_LOGIN_ENABLED:-true}
+      SELF_REGISTRATION_ENABLED: ${SELF_REGISTRATION_ENABLED:-true}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:8080/api/auth/oidc/callback}
+      CONSOLE_PUBLIC_ORIGIN: ${CONSOLE_PUBLIC_ORIGIN:-http://localhost:5173}
+      SMTP_URL: ${SMTP_URL:-}
+      SMTP_FROM: ${SMTP_FROM:-a2a-platform@localhost}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      ALLOW_PRIVATE_OUTBOUND_TARGETS: "true"
+      PORT: 3000
+      NODE_ENV: development
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/platform.Dockerfile
+    command:
+      ["npm", "--workspace", "@a2a-platform/health-worker", "run", "start"]
+    environment:
+      POSTGRES_URL: postgres://platform:platform@postgres:5432/a2a_platform
+      REDIS_URL: redis://redis:6379
+      HEALTH_CHECK_INTERVAL_MS: 30000
+      ALLOW_PRIVATE_OUTBOUND_TARGETS: "true"
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-local-development-credential-key-change-before-deploy}
+      CREDENTIAL_KEY_VERSION: ${CREDENTIAL_KEY_VERSION:-v1}
+      CREDENTIAL_PREVIOUS_KEYS: ${CREDENTIAL_PREVIOUS_KEYS:-{}}
+      SMTP_URL: ${SMTP_URL:-}
+      SMTP_FROM: ${SMTP_FROM:-a2a-platform@localhost}
+      NODE_ENV: development
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:8080/healthz",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  console:
+    build:
+      context: ..
+      dockerfile: infra/console.Dockerfile
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      nginx:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  postgres-data:

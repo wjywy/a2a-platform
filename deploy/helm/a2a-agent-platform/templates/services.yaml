@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "a2a-platform.fullname" . }}-api
+spec:
+  selector:
+    {{- include "a2a-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  ports:
+    - { name: http, port: 3000, targetPort: http }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "a2a-platform.fullname" . }}-console
+spec:
+  selector:
+    {{- include "a2a-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+  ports:
+    - { name: http, port: 80, targetPort: http }

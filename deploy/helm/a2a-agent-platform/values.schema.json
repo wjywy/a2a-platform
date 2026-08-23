@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["external", "secrets", "config"],
+  "properties": {
+    "external": {
+      "type": "object",
+      "required": ["postgresUrl", "redisUrl"],
+      "properties": {
+        "postgresUrl": { "type": "string", "minLength": 12 },
+        "redisUrl": { "type": "string", "minLength": 9 }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "required": [
+        "jwtSecret",
+        "credentialEncryptionKey",
+        "credentialKeyVersion",
+        "credentialPreviousKeys"
+      ],
+      "properties": {
+        "jwtSecret": { "type": "string", "minLength": 32 },
+        "credentialEncryptionKey": { "type": "string", "minLength": 32 },
+        "credentialKeyVersion": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]{1,32}$"
+        },
+        "credentialPreviousKeys": { "type": "string" },
+        "oidcClientSecret": { "type": "string" },
+        "smtpUrl": { "type": "string" },
+        "metricsToken": { "type": "string" }
+      }
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "platformOrigin": { "type": "string", "pattern": "^https://" },
+        "consoleOrigin": { "type": "string", "pattern": "^https://" },
+        "localLoginEnabled": { "enum": ["true", "false"] },
+        "selfRegistrationEnabled": { "enum": ["true", "false"] },
+        "healthCheckIntervalMs": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]{3,}$"
+        }
+      }
+    }
+  }
+}

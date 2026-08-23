@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "a2a-platform.fullname" . }}-api
+  labels:
+    {{- include "a2a-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.replicaCount.api }}
+  selector:
+    matchLabels:
+      {{- include "a2a-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "a2a-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          command: ["npm", "--workspace", "@a2a-platform/api", "run", "migrate"]
+          envFrom:
+            - secretRef: { name: {{ include "a2a-platform.fullname" . }} }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+      containers:
+        - name: api
+          image: "{{ .Values.image.api.repository }}:{{ .Values.image.api.tag }}"
+          imagePullPolicy: {{ .Values.image.api.pullPolicy }}
+          command: ["npm", "--workspace", "@a2a-platform/api", "run", "start"]
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef: { name: {{ include "a2a-platform.fullname" . }} }
+            - secretRef: { name: {{ include "a2a-platform.fullname" . }} }
+          env:
+            - { name: PORT, value: "3000" }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            readOnlyRootFilesystem: true
+            runAsUser: 10001
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}

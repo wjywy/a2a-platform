@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "a2a-platform.fullname" . }}-console
+  labels:
+    {{- include "a2a-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+spec:
+  replicas: {{ .Values.replicaCount.console }}
+  selector:
+    matchLabels:
+      {{- include "a2a-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: console
+  template:
+    metadata:
+      labels:
+        {{- include "a2a-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: console
+    spec:
+      containers:
+        - name: console
+          image: "{{ .Values.image.console.repository }}:{{ .Values.image.console.tag }}"
+          imagePullPolicy: {{ .Values.image.console.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 80 }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+          livenessProbe:
+            httpGet: { path: /, port: http }
+          resources:
+            {{- toYaml .Values.resources.console | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }

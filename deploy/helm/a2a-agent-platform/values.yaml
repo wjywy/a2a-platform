@@ -1,0 +1,75 @@
+image:
+  api:
+    repository: example/a2a-platform-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  console:
+    repository: example/a2a-platform-console
+    tag: latest
+    pullPolicy: IfNotPresent
+
+replicaCount:
+  api: 2
+  worker: 2
+  console: 2
+
+service:
+  apiPort: 3000
+  consolePort: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: a2a-platform.example.com
+  tlsSecretName: a2a-platform-tls
+
+external:
+  postgresUrl: ""
+  redisUrl: ""
+
+secrets:
+  jwtSecret: ""
+  credentialEncryptionKey: ""
+  credentialKeyVersion: v1
+  credentialPreviousKeys: "{}"
+  oidcClientSecret: ""
+  smtpUrl: ""
+  metricsToken: ""
+
+config:
+  platformOrigin: https://a2a-platform.example.com
+  consoleOrigin: https://a2a-platform.example.com
+  consoleOrigins: https://a2a-platform.example.com
+  jwtIssuer: a2a-agent-platform
+  localLoginEnabled: "false"
+  selfRegistrationEnabled: "false"
+  oidcIssuer: ""
+  oidcClientId: ""
+  oidcRedirectUri: https://a2a-platform.example.com/api/auth/oidc/callback
+  smtpFrom: a2a-platform@example.com
+  healthCheckIntervalMs: "30000"
+  publicAgentCatalog: "true"
+
+resources:
+  api:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  worker:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  console:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+
+autoscaling:
+  enabled: true
+  apiMinReplicas: 2
+  apiMaxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true

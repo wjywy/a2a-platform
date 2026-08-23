@@ -1,0 +1,15 @@
+{
+  "name": "@a2a-platform/health-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx ../platform-api/src/health-worker.ts",
+    "start": "tsx ../platform-api/src/health-worker.ts",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3",
+    "typescript": "^5.9.3"
+  }
+}
