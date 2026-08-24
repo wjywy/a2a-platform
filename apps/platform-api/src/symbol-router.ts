@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { AgentCard } from "@a2a-js/sdk";
+import { AgentCard, formatSSEEvent, SSE_HEADERS, StreamResponse } from "@a2a-js/sdk";
 import { asyncHandler } from "./http.js";
 import { config } from "./config.js";
 import { cancelSymbolTask, getSymbolTask, handleSymbolMessage, isSymbolAgentSlug, symbolCard } from "./symbol-service.js";
@@ -21,6 +21,8 @@ function requireInternal(req: import("express").Request) {
 
 router.options("/api/builtin/symbol/:slug/:tenant/message:send", (_req, res) => res.sendStatus(204));
 router.options("/api/builtin/symbol/:slug/message:send", (_req, res) => res.sendStatus(204));
+router.options("/api/builtin/symbol/:slug/:tenant/message:stream", (_req, res) => res.sendStatus(204));
+router.options("/api/builtin/symbol/:slug/message:stream", (_req, res) => res.sendStatus(204));
 router.options("/api/builtin/symbol/:slug", (_req, res) => res.sendStatus(204));
 
 router.get("/api/builtin/symbol/:slug/.well-known/agent-card.json", (req, res) => {
@@ -40,6 +42,29 @@ async function send(req: import("express").Request, res: import("express").Respo
 }
 router.post("/api/builtin/symbol/:slug/:tenant/message:send", asyncHandler(send));
 router.post("/api/builtin/symbol/:slug/message:send", asyncHandler(send));
+
+async function stream(req: import("express").Request, res: import("express").Response): Promise<void> {
+  const slug = String(req.params.slug);
+  if (!isSymbolAgentSlug(slug)) { res.status(404).json({ error: "Agent 不存在" }); return; }
+  requireInternal(req);
+  const tenantId = req.params.tenant ? String(req.params.tenant) : "";
+  if (!tenantId) { res.status(400).json({ error: "缺少 tenant。" }); return; }
+  Object.entries(SSE_HEADERS).forEach(([key, value]) => res.setHeader(key, value));
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  try {
+    const result = await handleSymbolMessage(slug, tenantId, req.body);
+    const event = StreamResponse.toJSON({ payload: { $case: "task", value: result as never } });
+    res.write(formatSSEEvent(event));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Symbol Agent 流式调用失败。";
+    res.write(formatSSEEvent({ error: { message } }));
+  } finally {
+    res.end();
+  }
+}
+router.post("/api/builtin/symbol/:slug/:tenant/message:stream", asyncHandler(stream));
+router.post("/api/builtin/symbol/:slug/message:stream", asyncHandler(stream));
 
 async function task(req: import("express").Request, res: import("express").Response): Promise<void> {
   const slug = String(req.params.slug); const tenantId = req.params.tenant ? String(req.params.tenant) : ""; const taskId = String(req.params.taskId);

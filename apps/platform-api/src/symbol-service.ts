@@ -3,7 +3,7 @@ import { z } from "zod";
 import { config } from "./config.js";
 import { query } from "./db.js";
 import { getRedis } from "./redis.js";
-import { runSymbolGraph } from "./symbol-graph.js";
+import { recordSymbolInterrupt, runSymbolGraph } from "./symbol-graph.js";
 
 export const symbolAgentSlugs = [
   "symbol-market",
@@ -183,7 +183,7 @@ async function runAnalysis(slug: SymbolAgentSlug, intent: Intent): Promise<{ tex
 
 export function symbolCard(slug: SymbolAgentSlug) {
   const spec = definitions[slug]; const base = `${config.platformOrigin}/api/builtin/symbol/${slug}`;
-  return { protocolVersion: "1.0", name: spec.name, description: spec.description, version: "1.0.0", provider: { organization: "A2A Platform", url: config.platformOrigin }, capabilities: { streaming: false, pushNotifications: false, stateTransitionHistory: true }, supportedInterfaces: [{ url: base, protocolBinding: "HTTP+JSON", protocolVersion: "1.0", tenant: "" }], skills: [{ id: spec.skill, name: spec.name, description: spec.description, tags: ["symbol", "finance", "built-in"], examples: ["用自然语言描述你想研究的标的和问题。"] }], securitySchemes: {}, securityRequirements: [] };
+  return { protocolVersion: "1.0", name: spec.name, description: spec.description, version: "1.0.0", provider: { organization: "A2A Platform", url: config.platformOrigin }, capabilities: { streaming: true, pushNotifications: false, stateTransitionHistory: true }, supportedInterfaces: [{ url: base, protocolBinding: "HTTP+JSON", protocolVersion: "1.0", tenant: "" }], skills: [{ id: spec.skill, name: spec.name, description: spec.description, tags: ["symbol", "finance", "built-in"], examples: ["用自然语言描述你想研究的标的和问题。"] }], securitySchemes: {}, securityRequirements: [] };
 }
 
 export async function handleSymbolMessage(slug: SymbolAgentSlug, tenantId: string, body: unknown) {
@@ -195,12 +195,13 @@ export async function handleSymbolMessage(slug: SymbolAgentSlug, tenantId: strin
   if ((intent.missing ?? []).length) {
     const answer = missingQuestion(slug, intent.missing ?? []); transcript.push({ role: "agent", text: answer, at: now() });
     await saveConversation({ task_id: taskId, context_id: contextId, tenant_id: tenantId, agent_slug: slug, state: "collecting", user_message: incoming.text, intent, transcript, result: null });
+    await recordSymbolInterrupt({ tenantId, taskId, agentSlug: slug, intent: intent as Record<string, unknown> }, intent.missing ?? []);
     return taskJson({ taskId, contextId, state: "TASK_STATE_INPUT_REQUIRED", text: answer, metadata: { missing: intent.missing, agent: slug } });
   }
   try {
     const result = await runSymbolGraph(
       { tenantId, taskId, agentSlug: slug, intent: intent as Record<string, unknown> },
-      () => runAnalysis(slug, intent),
+      (nodeSlug) => runAnalysis(nodeSlug as SymbolAgentSlug, intent),
     );
     transcript.push({ role: "agent", text: result.text, at: now() });
     await saveConversation({ task_id: taskId, context_id: contextId, tenant_id: tenantId, agent_slug: slug, state: "completed", user_message: incoming.text, intent, transcript, result: result.data });

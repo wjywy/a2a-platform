@@ -149,6 +149,20 @@ export type TaskDetail = TaskSummary & {
     occurredAt: string;
   }>;
 };
+export type AgentRunTrajectory = {
+  id: string;
+  status: string;
+  threadId: string;
+  createdAt: string;
+  updatedAt: string;
+  events: Array<{
+    sequence: number;
+    node: string;
+    kind: "node_started" | "node_completed" | "tool" | "interrupt" | "error" | "final";
+    payload: Record<string, unknown>;
+    created_at: string;
+  }>;
+};
 export type UsageRecord = {
   id: number;
   tenantId: string;
@@ -494,6 +508,11 @@ export const platformApi = {
     request<void>("/api/auth/logout", token, { method: "POST", body: "{}" }),
   me: (token: string) =>
     request<{ user: PlatformUser; tenants: Tenant[] }>("/api/auth/me", token),
+  agentRun: (token: string, tenantId: string, agentSlug: string, taskId: string) =>
+    request<{ run: AgentRunTrajectory | null }>(
+      `/api/admin/agent-runs/${encodeURIComponent(agentSlug)}/${encodeURIComponent(taskId)}?tenantId=${encodeURIComponent(tenantId)}`,
+      token,
+    ).then((value) => value.run),
   oidcStart: () =>
     request<{ authorizationUrl: string }>("/api/auth/oidc/start", ""),
   oidcExchange: (code: string) =>

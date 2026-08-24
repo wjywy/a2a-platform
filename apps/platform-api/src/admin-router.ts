@@ -67,6 +67,7 @@ import {
   taskEventsJson,
   taskStats,
 } from "./task-service.js";
+import { getSymbolRunTrajectory } from "./symbol-graph.js";
 import {
   getSetting,
   getSettingValue,
@@ -841,6 +842,22 @@ router.get(
       .type("application/json")
       .attachment(`task-${task.remoteTaskId}-events.json`)
       .send(await taskEventsJson(task.id));
+  }),
+);
+
+router.get(
+  "/agent-runs/:agentSlug/:taskId",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId) {
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。 ");
+    }
+    const run = await getSymbolRunTrajectory(
+      tenantId,
+      id(req, "taskId"),
+      id(req, "agentSlug"),
+    );
+    res.json({ run: run ?? null });
   }),
 );
 

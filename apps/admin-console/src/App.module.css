@@ -185,6 +185,73 @@
   font-size: 13px;
 }
 
+.agentStudio {
+  display: grid;
+  min-height: calc(100vh - 96px);
+  grid-template-columns: 272px minmax(0, 1fr) 260px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.studioSidebar,
+.studioTrace {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  padding: 18px;
+  background: #fbfcfe;
+}
+
+.studioSidebar { border-right: 1px solid var(--line); }
+.studioTrace { border-left: 1px solid var(--line); }
+.studioBrand { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; font-weight: 750; }
+.studioSidebar > label,
+.studioSettings > label { display: grid; gap: 6px; color: var(--text); font-size: 12px; font-weight: 650; }
+.studioAgentCard { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.studioAgentCard span { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.studioAgentCard :global(.ant-tag) { width: max-content; margin: 0; }
+.studioSettings { display: grid; gap: 12px; padding: 12px; border-radius: 9px; background: var(--blue-soft); }
+.studioSettings :global(.ant-typography) { font-size: 11px; line-height: 1.5; }
+
+.studioConversation { display: grid; min-width: 0; grid-template-rows: auto minmax(0, 1fr) auto; background: #fff; }
+.studioHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 66px; padding: 13px 22px; border-bottom: 1px solid var(--line); }
+.studioHeaderActions { display: flex; align-items: center; gap: 8px; }
+.studioHeader div { display: grid; gap: 3px; min-width: 0; }
+.studioHeader b { font-size: 14px; }
+.studioHeader span { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.studioMessages { display: flex; flex-direction: column; gap: 18px; overflow-y: auto; padding: 28px clamp(18px, 5vw, 74px); }
+.studioEmpty { max-width: 590px; margin: auto; color: var(--text); text-align: center; }
+.studioEmpty h2 { margin: 0 0 10px; color: var(--ink); font-size: clamp(22px, 2.7vw, 32px); letter-spacing: -0.7px; }
+.studioEmpty p { margin: 0; line-height: 1.75; }
+.studioUserMessage,
+.studioAgentMessage { max-width: min(760px, 100%); padding: 14px 16px; border-radius: 10px; line-height: 1.7; }
+.studioUserMessage { align-self: flex-end; background: var(--blue); color: #fff; }
+.studioAgentMessage { align-self: flex-start; border: 1px solid var(--line); background: #fff; }
+.messageRole { margin-bottom: 7px; font-size: 11px; font-weight: 750; opacity: .78; }
+.studioUserMessage :global(.markdownViewport) { color: inherit; }
+.studioComposer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; padding: 16px clamp(18px, 5vw, 74px) 20px; border-top: 1px solid var(--line); background: #fff; }
+.studioComposer :global(.ant-input) { resize: none; }
+.studioError { margin: 10px clamp(18px, 5vw, 74px) 0; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--danger) 30%, #fff); border-radius: 8px; background: #fff5f5; color: #a82f35; font-size: 12px; line-height: 1.55; }
+
+.traceTitle { display: grid; gap: 3px; }
+.traceTitle b { font-size: 14px; }
+.traceTitle span { color: var(--muted); font-size: 11px; }
+.traceEmpty { display: grid; min-height: 200px; place-items: center; align-content: center; gap: 8px; color: var(--muted); text-align: center; }
+.traceEmpty p { margin: 0; font-size: 12px; line-height: 1.6; }
+.traceEvent { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 9px; padding: 8px 0; border-bottom: 1px solid #eef1f5; }
+.traceDot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: #b9c1ce; }
+.trace_node_completed,.trace_final { background: var(--success); }
+.trace_node_started { background: var(--blue); }
+.trace_interrupt { background: var(--warning); }
+.trace_error { background: var(--danger); }
+.traceEvent div { display: grid; gap: 2px; }
+.traceEvent b { color: var(--ink); font-size: 12px; text-transform: capitalize; }
+.traceEvent small { color: var(--muted); font-size: 10px; }
+.traceEvent p { margin: 3px 0 0; color: var(--text); font-size: 11px; line-height: 1.5; }
+
 .sidebarFooter select,
 .sidebarFooter input {
   width: 100%;
@@ -2437,6 +2504,14 @@
     grid-template-columns: 1fr;
   }
 
+  .agentStudio {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+
+  .studioTrace {
+    display: none;
+  }
+
   .systemGrid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -2505,6 +2580,34 @@
   .roleLegend,
   .systemGrid {
     grid-template-columns: 1fr;
+  }
+
+  .agentStudio {
+    min-height: calc(100vh - 150px);
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .studioSidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .studioSidebar,
+  .studioTrace {
+    padding: 14px;
+  }
+
+  .studioConversation {
+    min-height: 620px;
+  }
+
+  .studioMessages {
+    padding: 22px 14px;
+  }
+
+  .studioComposer {
+    padding: 12px 14px 16px;
   }
 
   .toolbar {
