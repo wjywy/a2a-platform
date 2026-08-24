@@ -1,0 +1,16 @@
+services:
+  api:
+    environment:
+      NODE_ENV: production
+      PLATFORM_ORIGIN: https://a2a-platform.com
+      CONSOLE_ORIGINS: https://a2a-platform.com,https://www.a2a-platform.com
+      CONSOLE_PUBLIC_ORIGIN: https://a2a-platform.com
+      OIDC_REDIRECT_URI: https://a2a-platform.com/api/auth/oidc/callback
+      PLATFORM_DEV_TOKEN: ""
+      LOCAL_LOGIN_ENABLED: "true"
+      SELF_REGISTRATION_ENABLED: "true"
+      ALLOW_PRIVATE_OUTBOUND_TARGETS: "false"
+  worker:
+    environment:
+      NODE_ENV: production
+      ALLOW_PRIVATE_OUTBOUND_TARGETS: "false"
