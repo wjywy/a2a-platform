@@ -32,8 +32,8 @@ export function AgentStudio() {
   const [taskId, setTaskId] = useState("");
   const [trajectory, setTrajectory] = useState<AgentRunTrajectory | null>();
   const [settingsOpen, setSettingsOpen] = useState(true);
-  const config = useRef({ slug: "", apiKey: "", onEvent: undefined as undefined | ((event: unknown) => void) });
-  config.current = { slug, apiKey: secret, onEvent: (event) => { const next = findTaskId(event); if (next) setTaskId(next); } };
+  const config = useRef({ slug: "", apiKey: "", taskId: "", onEvent: undefined as undefined | ((event: unknown) => void) });
+  config.current = { slug, apiKey: secret, taskId, onEvent: (event) => { const next = findTaskId(event); if (next) setTaskId(next); } };
   const transport = useMemo(() => new A2AChatTransport(() => config.current), []);
   const chat = useChat({ transport });
   const availableAgents = useMemo(() => agents.filter((agent) => ["online", "degraded"].includes(agent.status) && (!tenantId || agent.tenantId === tenantId || agent.visibility === "public" || agent.allowedTenantIds.includes(tenantId))), [agents, tenantId]);

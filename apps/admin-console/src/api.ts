@@ -1062,6 +1062,8 @@ export async function* streamAgent(input: {
   apiKey: string;
   question: string;
   signal?: AbortSignal;
+  /** Continue a TASK_STATE_INPUT_REQUIRED conversation with the same task. */
+  continueTaskId?: string;
   taskId?: string;
 }): AsyncGenerator<SseEnvelope> {
   const path = input.taskId
@@ -1081,7 +1083,7 @@ export async function* streamAgent(input: {
               metadata: undefined,
             },
           ],
-          taskId: "",
+          taskId: input.continueTaskId ?? "",
           contextId: "",
           extensions: [],
           metadata: {},
