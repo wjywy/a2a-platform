@@ -89,8 +89,14 @@ jobs:
             # leaving the console as the default route.
             install -d -m 700 "$HOME/caddy"
             install -m 600 infra/Caddyfile "$HOME/caddy/Caddyfile"
-            sudo docker exec caddy caddy reload \
-              --config /etc/caddy/Caddyfile --adapter caddyfile
+            # The container's default command reads this bind-mounted file on
+            # startup. Restarting is deliberately used instead of Caddy's
+            # admin reload so a stale in-memory configuration cannot survive a
+            # successful deployment.
+            sudo docker restart caddy >/dev/null
+            sleep 3
+            curl -kfsS --resolve a2a-platform.com:443:127.0.0.1 \
+              https://a2a-platform.com/healthz >/dev/null
             sudo docker compose --env-file .env \
               -f infra/docker-compose.yml \
               -f infra/docker-compose.prod.yml ps
