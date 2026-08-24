@@ -1048,7 +1048,9 @@ export function RegisterAgentModal({
       toast.success("Agent Card 校验通过，已注册为下线状态");
       await saved();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "注册失败");
+      toast.error(
+        error instanceof Error ? `注册失败：${error.message}` : "注册失败",
+      );
     } finally {
       setBusy(false);
     }

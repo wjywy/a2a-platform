@@ -436,14 +436,25 @@ async function request<T>(
   if (response.status === 204) return undefined as T;
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = body.error;
+    // API gateways may return either { error: { ... } } or the error payload
+    // itself. Normalize both shapes so the user sees the actionable message.
+    const error =
+      body && typeof body === "object" && "error" in body ? body.error : body;
     throw new ApiError(
       response.status,
-      error?.code ?? "REQUEST_FAILED",
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "REQUEST_FAILED",
       typeof error === "string"
         ? error
-        : (error?.message ?? `请求失败 (${response.status})`),
-      error?.details,
+        : error && typeof error === "object" && "message" in error &&
+            typeof error.message === "string"
+          ? error.message
+          : `请求失败 (${response.status})`,
+      error && typeof error === "object" && "details" in error &&
+        error.details && typeof error.details === "object"
+        ? (error.details as Record<string, unknown>)
+        : undefined,
     );
   }
   return body as T;
