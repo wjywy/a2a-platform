@@ -1281,6 +1281,13 @@
   background: #fbfcfe;
 }
 
+.chatMessage {
+  display: grid;
+  gap: 8px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border-color, #edf0f3);
+}
+
 .markdownMeta {
   position: sticky;
   z-index: 1;

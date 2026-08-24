@@ -3,6 +3,7 @@ import { z } from "zod";
 import { config } from "./config.js";
 import { query } from "./db.js";
 import { getRedis } from "./redis.js";
+import { runSymbolGraph } from "./symbol-graph.js";
 
 export const symbolAgentSlugs = [
   "symbol-market",
@@ -197,7 +198,11 @@ export async function handleSymbolMessage(slug: SymbolAgentSlug, tenantId: strin
     return taskJson({ taskId, contextId, state: "TASK_STATE_INPUT_REQUIRED", text: answer, metadata: { missing: intent.missing, agent: slug } });
   }
   try {
-    const result = await runAnalysis(slug, intent); transcript.push({ role: "agent", text: result.text, at: now() });
+    const result = await runSymbolGraph(
+      { tenantId, taskId, agentSlug: slug, intent: intent as Record<string, unknown> },
+      () => runAnalysis(slug, intent),
+    );
+    transcript.push({ role: "agent", text: result.text, at: now() });
     await saveConversation({ task_id: taskId, context_id: contextId, tenant_id: tenantId, agent_slug: slug, state: "completed", user_message: incoming.text, intent, transcript, result: result.data });
     return taskJson({ taskId, contextId, state: "TASK_STATE_COMPLETED", text: result.text, artifact: result.data, metadata: { agent: slug, intent } });
   } catch (error) {

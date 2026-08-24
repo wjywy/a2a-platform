@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
 import {
   Button,
   Checkbox,
@@ -45,6 +46,7 @@ import {
   aggregateMarkdown,
   StreamingMarkdown,
 } from "../components/StreamingMarkdown";
+import { A2AChatTransport } from "../a2a-chat-transport";
 type DebugEvent = SseEnvelope & { index: number; receivedAt: string };
 const MAX_RETAINED_EVENTS = 500;
 function findTaskId(value: unknown): string | undefined {
@@ -80,6 +82,13 @@ export function DebugPage() {
   const [taskId, setTaskId] = useState("");
   const [mode, setMode] = useState<"new" | "subscribe">("new");
   const controller = useRef<AbortController | undefined>(undefined);
+  const chatConfig = useRef({ slug: "", apiKey: "" });
+  chatConfig.current = { slug, apiKey: secret };
+  const chatTransport = useMemo(
+    () => new A2AChatTransport(() => chatConfig.current),
+    [],
+  );
+  const chat = useChat({ transport: chatTransport });
   const create = useDisclosure();
   const toast = useToast();
   const markdownResult = useMemo(() => aggregateMarkdown(events), [events]);
@@ -113,6 +122,11 @@ export function DebugPage() {
     setBusy(true);
     if (mode === "new") setTaskId("");
     try {
+      if (mode === "new") {
+        await chat.sendMessage({ text: question });
+        toast.success("对话响应已结束");
+        return;
+      }
       let index = 0;
       for await (const event of streamAgent({
         slug,
@@ -356,6 +370,22 @@ export function DebugPage() {
                         markdown={markdownResult.markdown}
                         busy={busy}
                       />
+                      {chat.messages.map((message) => (
+                        <div key={message.id} className={styles.chatMessage}>
+                          <Typography.Text strong>
+                            {message.role === "user" ? "你" : "Agent"}
+                          </Typography.Text>
+                          {message.parts
+                            .filter((part) => part.type === "text")
+                            .map((part, index) => (
+                              <StreamingMarkdown
+                                key={index}
+                                markdown={part.text}
+                                busy={chat.status === "streaming"}
+                              />
+                            ))}
+                        </div>
+                      ))}
                     </div>
                   </PageState>
                 ),
