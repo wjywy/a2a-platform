@@ -188,7 +188,7 @@
 .agentStudio {
   display: grid;
   min-height: calc(100vh - 96px);
-  grid-template-columns: 272px minmax(0, 1fr) 260px;
+  grid-template-columns: var(--studio-left, 288px) 10px minmax(520px, 1fr) 10px var(--studio-right, 280px);
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -200,6 +200,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
   overflow: auto;
   padding: 18px;
   background: #fbfcfe;
@@ -213,8 +214,38 @@
 .studioAgentCard { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
 .studioAgentCard span { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .studioAgentCard :global(.ant-tag) { width: max-content; margin: 0; }
-.studioSettings { display: grid; gap: 12px; padding: 12px; border-radius: 9px; background: var(--blue-soft); }
+.studioSettings { display: grid; min-width: 0; gap: 12px; overflow: clip; padding: 12px; border-radius: 9px; background: #eef5ff; }
+.studioSettingsHeading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; color: var(--text); font-size: 12px; }
+.studioSettingsHeading :global(.ant-btn) { flex: 0 0 auto; padding-inline: 0; }
+.studioSettings :global(.ant-select),
+.studioSettings :global(.ant-input-affix-wrapper),
+.studioSettings :global(.ant-input-password) { width: 100%; min-width: 0; max-width: 100%; }
+.studioSettings :global(.ant-select-selector) { min-width: 0 !important; }
+.studioKeySelect { min-width: 0; }
 .studioSettings :global(.ant-typography) { font-size: 11px; line-height: 1.5; }
+
+.studioResizer {
+  position: relative;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+  background: #fff;
+}
+.studioResizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  content: "";
+  transition: background 140ms ease;
+}
+.studioResizer:hover::after,
+.studioResizer:focus-visible::after,
+.studioResizerActive::after { background: #8db7ff; }
+.studioResizer:focus-visible { outline: none; }
 
 .studioConversation { display: grid; min-width: 0; grid-template-rows: auto minmax(0, 1fr) auto; background: #fff; }
 .studioHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 66px; padding: 13px 22px; border-bottom: 1px solid var(--line); }
@@ -2506,6 +2537,10 @@
 
   .agentStudio {
     grid-template-columns: 240px minmax(0, 1fr);
+  }
+
+  .studioResizer {
+    display: none;
   }
 
   .studioTrace {
