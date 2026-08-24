@@ -1,0 +1,15 @@
+# Public edge for the Docker services on the host loopback. Keeping this file
+# in the repository makes public routing part of the same reviewed deployment
+# as the API and console rather than a one-off server configuration.
+a2a-platform.com, www.a2a-platform.com {
+  encode zstd gzip
+
+  @api path /api/* /agents/* /healthz /readyz /metrics
+  handle @api {
+    reverse_proxy 127.0.0.1:8080
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:5173
+  }
+}
