@@ -35,9 +35,11 @@ const allScopes = ["agent:invoke", "task:read", "task:cancel", "usage:read"];
 export function ApiKeysPanel({
   tenant,
   close,
+  onKeyCreated,
 }: {
   tenant: Tenant;
   close: () => void;
+  onKeyCreated?: (key: ApiKey) => void;
 }) {
   const { token, canAdminister } = useApp();
   const keys = useAsync(
@@ -155,6 +157,7 @@ export function ApiKeysPanel({
           saved={async (value) => {
             form.hide();
             if (value.secret) setRevealed(value);
+            if (value.secret) onKeyCreated?.(value);
             await keys.refresh();
           }}
         />

@@ -109,7 +109,7 @@ export function AgentStudio() {
       <Button type="text" icon={<SettingOutlined />} onClick={() => setSettingsOpen((value) => !value)}>调用凭据</Button>
       {settingsOpen && <div className={styles.studioSettings}>
         <div className={styles.studioSettingsHeading}><b>已保存的 Key</b><Button size="small" type="link" icon={<KeyOutlined />} onClick={() => setKeyManagerOpen(true)}>新建 Key</Button></div>
-        <Select className={styles.studioKeySelect} value={keyId || undefined} placeholder="选择 API Key" options={keys.data?.map((key) => ({ value: key.id, label: `${key.name} · ${key.prefix}` }))} onChange={setKeyId} />
+        <Select aria-label="已保存的 Key" className={styles.studioKeySelect} value={keyId || undefined} placeholder="选择 API Key" options={keys.data?.map((key) => ({ value: key.id, label: `${key.name} · ${key.prefix}` }))} onChange={setKeyId} />
         <label>API Key 明文<Input.Password value={secret} placeholder="a2a_live_…" onChange={(event) => { setSecret(event.target.value); if (keyId) sessionStorage.setItem(`a2a-secret:${keyId}`, event.target.value); }} /></label>
         <Typography.Text type="secondary">仅保存在本浏览器会话内，不会发送到管理 API。</Typography.Text>
       </div>}
@@ -131,6 +131,11 @@ export function AgentStudio() {
       {trajectory?.events.map((event) => <div className={styles.traceEvent} key={event.sequence}><span className={`${styles.traceDot} ${styles[`trace_${event.kind}`] ?? ""}`} /><div><b>{event.node.replaceAll("_", " ")}</b><small>{event.kind.replaceAll("_", " · ")}</small>{event.kind === "interrupt" && <p>等待补充：{Array.isArray(event.payload.missing) ? event.payload.missing.join("、") : "需要更多信息"}</p>}</div></div>)}
     </aside>
     </div>
-    {keyManagerOpen && selectedTenant && <ApiKeysPanel tenant={selectedTenant} close={() => { setKeyManagerOpen(false); void keys.refresh(); }} />}
+    {keyManagerOpen && selectedTenant && <ApiKeysPanel tenant={selectedTenant} close={() => { setKeyManagerOpen(false); void keys.refresh(); }} onKeyCreated={(key) => {
+      if (!key.secret) return;
+      sessionStorage.setItem(`a2a-secret:${key.id}`, key.secret);
+      setKeyId(key.id);
+      setSecret(key.secret);
+    }} />}
   </>;
 }

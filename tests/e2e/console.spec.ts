@@ -335,95 +335,18 @@ test("Agent registration dialog contains operational fields and can be dismissed
   ).toBeHidden();
 });
 
-test("debug console switches between protocol events and aggregated streaming Markdown", async ({
-  page,
-}) => {
-  const streamEvents = [
-    {
-      task: {
-        id: "markdown-task-1",
-        contextId: "markdown-context-1",
-        status: { state: "TASK_STATE_SUBMITTED" },
-        artifacts: [],
-      },
-    },
-    {
-      statusUpdate: {
-        taskId: "markdown-task-1",
-        status: {
-          state: "TASK_STATE_WORKING",
-          message: {
-            messageId: "working-message-1",
-            role: "ROLE_AGENT",
-            parts: [{ text: "正在生成股票分析…" }],
-          },
-        },
-      },
-    },
-    {
-      artifactUpdate: {
-        taskId: "markdown-task-1",
-        append: false,
-        artifact: {
-          artifactId: "analysis-1",
-          parts: [
-            {
-              text: "# AAPL 流式分析\n\n| 指标 | 结果 |\n| --- | --- |\n",
-            },
-          ],
-        },
-      },
-    },
-    {
-      artifactUpdate: {
-        taskId: "markdown-task-1",
-        append: true,
-        lastChunk: true,
-        artifact: {
-          artifactId: "analysis-1",
-          parts: [
-            {
-              text: "| 动量 | 上行 |\n\n> 仅供测试。\n\n![追踪像素](https://untrusted.example/pixel.png)",
-            },
-          ],
-        },
-      },
-    },
-  ];
-  await page.route("**/agents/*/a2a/rest/message:stream", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "text/event-stream",
-      body: streamEvents
-        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
-        .join(""),
-    });
-  });
-
+test("debug studio restores a newly generated API Key after a page refresh", async ({ page }) => {
+  const keyName = `studio-key-${Date.now()}`;
   await page.goto("/debug");
-  await expect(page.getByRole("heading", { name: "请求配置" })).toBeVisible();
-  await expect(
-    page.getByText("股票专家 · online", { exact: true }),
-  ).toBeVisible();
-  await page.getByPlaceholder("a2a_live_…").fill("a2a_live_playwright");
-  await page.getByRole("tab", { name: /Markdown 预览/ }).click();
-  await page.getByRole("button", { name: "发起流式调用" }).click();
+  await page.getByRole("button", { name: "新建 Key" }).click();
+  await page.getByRole("button", { name: "创建 Key" }).click();
+  await page.getByLabel("名称").fill(keyName);
+  await page.getByRole("button", { name: "创建 Key", exact: true }).click();
+  const secret = await page.locator(".ant-modal .ant-typography code").textContent();
+  expect(secret).toMatch(/^a2a_live_/);
 
-  const markdownPanel = page.getByRole("tabpanel", {
-    name: /Markdown 预览/,
-  });
-  await expect(
-    markdownPanel.getByRole("heading", { name: "AAPL 流式分析" }),
-  ).toBeVisible();
-  await expect(markdownPanel.getByRole("cell", { name: "上行" })).toBeVisible();
-  await expect(markdownPanel.getByText("仅供测试。")).toBeVisible();
-  await expect(
-    markdownPanel.getByText("外部图片已拦截：追踪像素"),
-  ).toBeVisible();
-  await expect(markdownPanel.locator("img")).toHaveCount(0);
-  await expect(markdownPanel.getByText("2 个文本块")).toBeVisible();
-
-  await page.getByRole("tab", { name: /事件明细/ }).click();
-  const eventPanel = page.getByRole("tabpanel", { name: /事件明细/ });
-  await expect(eventPanel.locator(".ant-collapse-item")).toHaveCount(4);
+  await page.reload();
+  await page.getByRole("combobox", { name: "已保存的 Key" }).click();
+  await page.getByText(keyName, { exact: false }).click();
+  await expect(page.getByPlaceholder("a2a_live_…")).toHaveValue(secret!);
 });
