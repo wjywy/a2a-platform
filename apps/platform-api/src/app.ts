@@ -12,6 +12,7 @@ import {
 } from "./auth.js";
 import { config } from "./config.js";
 import { prometheusMetrics, readiness } from "./operations-service.js";
+import { symbolRouter } from "./symbol-router.js";
 
 export function createApp() {
   requireConfiguredJwtSecret();
@@ -77,6 +78,7 @@ export function createApp() {
   app.use("/api/auth", authRouter);
   app.use("/api/catalog", catalogRouter);
   app.use("/api/admin", adminRouter);
+  app.use(symbolRouter);
   app.use(gatewayRouter);
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

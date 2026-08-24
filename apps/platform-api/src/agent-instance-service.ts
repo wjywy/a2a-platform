@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { pool, query } from "./db.js";
 import { AppError, ConflictError, NotFoundError } from "./domain.js";
-import { validateRemoteAgent } from "./agent-service.js";
+import { symbolUpstreamUrl, validateRemoteAgent } from "./agent-service.js";
 import {
   credentialHeaders,
   credentialSummary,
@@ -269,12 +269,13 @@ export async function checkAgentInstance(
   let error: string | undefined;
   try {
     const credential = decryptCredential(credentialInput(row));
-    await validateRemoteAgent(row.card_url, credential);
-    await assertSafeOutboundUrl(row.selected_interface.url, {
+    await validateRemoteAgent(symbolUpstreamUrl(row.card_url), credential);
+    const endpoint = symbolUpstreamUrl(row.selected_interface.url);
+    await assertSafeOutboundUrl(endpoint, {
       purpose: "agent_card",
       allowPrivate: allowPrivateOutboundTargets(),
     });
-    const response = await secureFetch(row.selected_interface.url, {
+    const response = await secureFetch(endpoint, {
       method: "OPTIONS",
       redirect: "manual",
       headers: credentialHeaders(credential),

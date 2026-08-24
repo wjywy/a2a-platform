@@ -1,15 +1,25 @@
 import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { pool } from "./db.js";
+import { ensureSymbolBuiltinAgents } from "./symbol-bootstrap.js";
 
 const app = createApp();
-const server = app.listen(config.port, () =>
-  console.log(`A2A platform API listening on :${config.port}`),
-);
+let server: ReturnType<typeof app.listen>;
+
+async function start() {
+  await ensureSymbolBuiltinAgents();
+  server = app.listen(config.port, () =>
+    console.log(`A2A platform API listening on :${config.port}`),
+  );
+}
+void start().catch((error) => {
+  console.error("Failed to register built-in Symbol agents:", error);
+  process.exit(1);
+});
 
 async function shutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully.`);
-  server.close(async () => {
+  server?.close(async () => {
     await pool.end();
     process.exit(0);
   });

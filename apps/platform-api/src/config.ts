@@ -51,4 +51,12 @@ export const config = {
   maxA2AEventBytes: Number(process.env.MAX_A2A_EVENT_BYTES ?? 1_048_576),
   maxA2AStreamEvents: Number(process.env.MAX_A2A_STREAM_EVENTS ?? 10_000),
   maxA2ACallDurationMs: Number(process.env.MAX_A2A_CALL_DURATION_MS ?? 300_000),
+  /** Internal credential used only when the platform calls its bundled agents. */
+  symbolInternalToken: process.env.SYMBOL_INTERNAL_TOKEN ?? "",
+  // In Docker development this is http://api:3000, avoiding a host-network hairpin.
+  // Production may leave it equal to PLATFORM_ORIGIN.
+  symbolInternalOrigin: (process.env.SYMBOL_INTERNAL_ORIGIN || process.env.PLATFORM_ORIGIN || "http://localhost:8080").replace(/\/$/, ""),
+  deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",
+  deepseekModel: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
+  finnhubApiKey: process.env.FINNHUB_API_KEY ?? "",
 };

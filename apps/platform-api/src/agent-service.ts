@@ -241,6 +241,17 @@ export function normalizeLocalDevelopmentEndpoints(
   return copy;
 }
 
+/**
+ * Bundled agents are trusted code in this deployment. In local Docker their
+ * public Card contains localhost, which is not the API container; use the
+ * explicitly configured service origin for the actual upstream hop only.
+ */
+export function symbolUpstreamUrl(value: string): string {
+  const publicPrefix = `${config.platformOrigin}/api/builtin/symbol/`;
+  if (!value.startsWith(publicPrefix)) return value;
+  return `${config.symbolInternalOrigin}${value.slice(config.platformOrigin.length)}`;
+}
+
 export async function getRemoteClient(
   agent: PlatformAgent,
   target?: {
@@ -254,7 +265,7 @@ export async function getRemoteClient(
     allowPrivate: allowPrivateOutboundTargets(),
   });
   const card = structuredClone(agent.cardSnapshot);
-  card.supportedInterfaces = [{ ...selected, tenant: "" }];
+  card.supportedInterfaces = [{ ...selected, url: symbolUpstreamUrl(selected.url), tenant: "" }];
   const limitedFetch = createLimitedFetch(config.maxA2AResponseBytes);
   const authHeaders = credentialHeaders(target?.credential ?? { type: "none" });
   const transportFetch: typeof fetch = (input, init = {}) =>

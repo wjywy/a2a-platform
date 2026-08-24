@@ -63,6 +63,11 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       SMTP_FROM: ${SMTP_FROM:-a2a-platform@localhost}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      SYMBOL_INTERNAL_TOKEN: ${SYMBOL_INTERNAL_TOKEN:-}
+      SYMBOL_INTERNAL_ORIGIN: http://api:3000
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       ALLOW_PRIVATE_OUTBOUND_TARGETS: "true"
       PORT: 3000
       NODE_ENV: development
