@@ -76,7 +76,7 @@ jobs:
         run: |
           ssh "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
             set -euo pipefail
-            app_dir="$HOME/apps/a2a-platform"
+            app_dir="$HOME/a2a-platform"
             cd "$app_dir"
             git pull --ff-only origin main
             sudo docker compose --env-file .env \
