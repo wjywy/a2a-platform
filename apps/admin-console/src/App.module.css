@@ -3311,7 +3311,8 @@
      vertical space and is bounded by the device viewport. */
   .studioHistory {
     position: fixed;
-    z-index: 30;
+    /* Stay above the persistent mobile navigation while a modal drawer is open. */
+    z-index: 70;
     top: 0;
     bottom: 0;
     left: 0;
@@ -3334,7 +3335,7 @@
 
   .studioHistoryBackdrop {
     position: fixed;
-    z-index: 29;
+    z-index: 69;
     inset: 0;
     display: block;
     border: 0;

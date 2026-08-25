@@ -100,7 +100,15 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
       page.getByRole("button", { name: "打开会话历史" }),
     ).toBeVisible();
     await page.getByRole("button", { name: "打开会话历史" }).click();
-    await expect(page.getByLabel("会话管理")).toBeVisible();
+    const historyDrawer = page.getByLabel("会话管理");
+    await expect(historyDrawer).toBeVisible();
+    await expect
+      .poll(() =>
+        historyDrawer.evaluate((element) =>
+          Math.round(element.getBoundingClientRect().left),
+        ),
+      )
+      .toBe(0);
     await expect(page.getByPlaceholder("搜索会话")).toBeVisible();
     await page.getByRole("button", { name: "关闭会话历史" }).first().click();
     await expect(page.getByPlaceholder("搜索会话")).toBeHidden();
