@@ -260,6 +260,7 @@ test("restoring a saved conversation keeps the user-visible transcript and expos
   await page.getByText(tenant.displayName, { exact: true }).last().click();
   await studio.getByRole("combobox").nth(1).click();
   await page.getByText("Symbol 市场行情 Agent", { exact: true }).last().click();
+  await studio.getByRole("button", { name: "关闭 Agent 调用配置" }).click();
   const search = page.getByPlaceholder("搜索会话");
   await search.fill(title);
   await expect(page.getByRole("button", { name: title })).toBeVisible();

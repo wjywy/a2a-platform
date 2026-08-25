@@ -896,9 +896,10 @@ export function AgentStudio() {
           <Button
             type="text"
             icon={<SettingOutlined />}
-            onClick={() => setSettingsOpen((value) => !value)}
+            aria-label="关闭 Agent 调用配置"
+            onClick={() => setSettingsOpen(false)}
           >
-            安全调用
+            关闭配置
           </Button>
           {settingsOpen && (
             <div className={styles.studioSettings}>
