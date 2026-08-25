@@ -95,7 +95,7 @@ const titles: Record<PageKey, { title: string; description: string }> = {
   agents: { title: "Agent 管理", description: "注册、Card、健康与调用策略" },
   debug: {
     title: "在线调试",
-    description: "通过真实 API Key 发起 A2A 流式调用",
+    description: "登录后通过安全代理发起 A2A 流式调用",
   },
   tasks: { title: "任务中心", description: "请求、事件时间线与远端任务" },
   usage: { title: "用量分析", description: "调用趋势、失败率与延迟" },

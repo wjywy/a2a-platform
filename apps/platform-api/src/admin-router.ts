@@ -39,9 +39,9 @@ import {
   listApiKeys,
   revokeApiKey,
   updateApiKey,
-  authenticateApiKey,
 } from "./api-key-service.js";
 import { config } from "./config.js";
+import { resolveStudioServiceCredential } from "./studio-service-credential.js";
 import {
   createWebhook,
   deleteWebhook,
@@ -259,13 +259,8 @@ router.post(
   asyncHandler(async (req, res) => {
     const tenantId = z.string().uuid().parse(req.body?.tenantId);
     const agent = await studioAgentPermission(req, tenantId, id(req, "slug"));
-    if (!config.studioApiKey)
-      throw new AppError(
-        503,
-        "STUDIO_CREDENTIAL_NOT_CONFIGURED",
-        "在线调试服务尚未配置服务端调用凭据。",
-      );
-    const credential = await authenticateApiKey(config.studioApiKey);
+    const serviceCredential = await resolveStudioServiceCredential(tenantId);
+    const credential = serviceCredential.key;
     if (credential.tenantId !== tenantId)
       throw new AppError(
         403,
@@ -280,7 +275,7 @@ router.post(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": config.studioApiKey,
+        "x-api-key": serviceCredential.secret,
         "x-request-id": req.requestId ?? crypto.randomUUID(),
       },
       body: JSON.stringify(req.body?.request ?? {}),

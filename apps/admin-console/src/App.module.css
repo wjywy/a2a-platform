@@ -510,6 +510,8 @@
 .studioMessages {
   display: flex;
   flex-direction: column;
+  /* A transcript is a vertical stack, not an equal-height card grid. */
+  align-items: flex-start;
   gap: 18px;
   overflow-y: auto;
   padding: 32px clamp(22px, 4vw, 72px);
@@ -564,12 +566,18 @@
 }
 .studioUserMessage,
 .studioAgentMessage {
-  width: min(720px, 100%);
+  /* Never allow a message item to consume the remaining transcript height. */
+  flex: 0 0 auto;
+  min-height: 0;
+  height: auto;
   box-sizing: border-box;
   line-height: 1.72;
 }
 .studioUserMessage {
   align-self: flex-end;
+  width: fit-content;
+  max-width: min(720px, 100%);
+  display: flow-root;
   border-radius: 18px 18px 4px 18px;
   background: #eaf2ff;
   color: #14223a;
@@ -577,10 +585,12 @@
 }
 .studioAgentMessage {
   align-self: flex-start;
+  width: min(720px, 100%);
   padding: 2px 0 8px;
   color: #1d2939;
 }
 .studioMessageActions {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   min-height: 28px;
@@ -633,6 +643,16 @@
 }
 .studioUserMessage :global(.markdownViewport) {
   color: inherit;
+}
+/* The general Markdown reader reserves room for long documents. Chat turns
+   are deliberately compact; otherwise even a one-line prompt becomes a card. */
+.studioUserMessage .markdownDocument,
+.studioAgentMessage .markdownDocument {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
 }
 .studioThinking {
   display: inline-flex;
@@ -3220,14 +3240,18 @@
   }
 
   .agentStudio {
-    min-height: calc(100vh - 150px);
+    min-height: calc(100dvh - 132px);
+    border: 0;
+    border-radius: 0;
     grid-template-columns: 1fr;
     overflow: visible;
   }
 
   .studioSidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+    /* Agent selection is retained on desktop. On a phone the active Agent
+       context belongs in the chat header; a full configuration form before
+       every conversation prevents the composer from being reachable. */
+    display: none;
   }
 
   .studioSidebar,
@@ -3236,15 +3260,34 @@
   }
 
   .studioConversation {
-    min-height: 620px;
+    min-height: calc(100dvh - 132px);
+  }
+
+  .studioHeader {
+    min-height: 56px;
+    padding: 10px 14px;
+  }
+
+  .studioHeaderActions > :not(:first-child) {
+    display: none;
+  }
+
+  .studioChatShell {
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .studioMessages {
-    padding: 22px 14px;
+    gap: 15px;
+    padding: 20px 14px 14px;
   }
 
   .studioComposer {
-    padding: 12px 14px 16px;
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    gap: 8px;
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 24px rgba(32, 47, 74, 0.06);
   }
 
   .studioChatShell {
@@ -3252,13 +3295,58 @@
   }
 
   .studioHistory {
-    max-height: 250px;
+    max-height: 138px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .studioHistoryHeader {
+    min-height: 42px;
+    padding: 0 10px 0 14px;
+  }
+
+  .studioHistoryToggle,
+  .studioHistorySearch,
+  .studioHistoryLabelFilter,
+  .studioHistoryPagination {
+    display: none;
   }
 
   .studioHistoryList {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: grid;
+    min-height: 76px;
+    grid-auto-columns: minmax(172px, 74%);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 7px 12px 10px;
+    scroll-snap-type: x proximity;
+  }
+
+  .studioHistoryItem {
+    scroll-snap-align: start;
+  }
+
+  .studioHistorySelect {
+    min-height: 66px;
+    padding: 8px 30px 8px 9px;
+  }
+
+  .studioHistoryEmpty,
+  .studioHistoryLoading {
+    padding: 10px 2px;
+  }
+
+  .studioUserMessage {
+    max-width: 92%;
+    padding: 11px 13px;
+  }
+
+  .studioAgentMessage {
+    max-width: 100%;
   }
 
   .studioMessageActions {

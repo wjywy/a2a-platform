@@ -4,6 +4,7 @@ import {
   formatSSEEvent,
   SSE_HEADERS,
   StreamResponse,
+  Task,
 } from "@a2a-js/sdk";
 import { asyncHandler } from "./http.js";
 import { config } from "./config.js";
@@ -107,8 +108,12 @@ async function stream(
   res.flushHeaders();
   try {
     const result = await handleSymbolMessage(slug, tenantId, req.body);
+    // `handleSymbolMessage` deliberately returns the portable A2A JSON shape.
+    // Rehydrate it before protobuf serialization; passing a plain object here
+    // makes the SDK emit `UNRECOGNIZED` enums and empty parts, which in turn
+    // leaves AI SDK with a successful but visually blank assistant message.
     const event = StreamResponse.toJSON({
-      payload: { $case: "task", value: result as never },
+      payload: { $case: "task", value: Task.fromJSON(result) },
     });
     res.write(formatSSEEvent(event));
   } catch (error) {

@@ -92,7 +92,9 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
   page,
 }, testInfo) => {
   await page.goto("/debug");
-  await expect(page.getByText("Agent Studio", { exact: true })).toBeVisible();
+  if (!testInfo.project.name.includes("mobile")) {
+    await expect(page.getByText("Agent Studio", { exact: true })).toBeVisible();
+  }
   await expect(page.getByText("会话", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "新建对话" }).first(),
@@ -105,9 +107,28 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
   }));
   expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width + 1);
 
-  if (testInfo.project.name.includes("mobile")) {
-    await expect(page.getByPlaceholder("搜索会话")).toBeVisible();
-  }
+});
+
+test("authenticated Studio sends a real message and keeps the user bubble content-sized", async ({
+  page,
+}) => {
+  await page.goto("/debug");
+  const composer = page.getByPlaceholder("给 Agent 发送消息…");
+  await expect(composer).toBeEnabled();
+  await composer.fill("请分析 AAPL 的近期走势、关键风险和需要关注的指标");
+  await page.getByRole("button", { name: "发送" }).click();
+
+  const userMessage = page.locator('[class*="studioUserMessage"]').last();
+  await expect(userMessage).toContainText("分析 AAPL 的近期走势");
+  const bounds = await userMessage.boundingBox();
+  expect(bounds, "user bubble should be rendered").not.toBeNull();
+  expect(bounds!.height).toBeLessThan(220);
+
+  // The composer is disabled while the stream is active and becomes usable
+  // again only after the server sends a terminal task state.
+  await expect(composer).toBeEnabled({ timeout: 25_000 });
+  const agentMessage = page.locator('[class*="studioAgentMessage"]').last();
+  await expect(agentMessage.locator('[class*="markdownDocument"]')).not.toBeEmpty();
 });
 
 test("conversation lifecycle endpoints retain history, idempotency, labels and export", async ({
