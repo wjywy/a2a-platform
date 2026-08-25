@@ -106,12 +106,12 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
         ),
       )
       .toBe(0);
-    await expect(page.getByPlaceholder("搜索会话")).toBeVisible();
+    await expect(historyDrawer.getByText("A2A Hub", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "关闭会话历史" }).first().click();
-    await expect(page.getByPlaceholder("搜索会话")).toBeHidden();
+    await expect(historyDrawer).toBeHidden();
   } else {
     await expect(
-      page.getByLabel("会话管理").getByText("会话", { exact: true }),
+      page.getByLabel("会话管理").getByText("A2A Hub", { exact: true }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "新建对话" }).first(),

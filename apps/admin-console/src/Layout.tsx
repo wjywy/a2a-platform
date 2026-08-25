@@ -136,7 +136,9 @@ export function Layout({
     return true;
   });
   return (
-    <div className={styles.shell}>
+    <div
+      className={`${styles.shell} ${page === "debug" ? styles.debugShell : ""}`}
+    >
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
           <span className={styles.brandMark}>A</span>

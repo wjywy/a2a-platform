@@ -136,9 +136,9 @@ const statusConfig: Record<
   string,
   { label: string; color: TagProps["color"]; icon: ReactNode }
 > = {
-  active: { label: "已启用", color: "blue", icon: <CheckCircleFilled /> },
+  active: { label: "已启用", color: "success", icon: <CheckCircleFilled /> },
   suspended: { label: "已停用", color: "default", icon: <MinusCircleFilled /> },
-  online: { label: "已上线", color: "blue", icon: <CheckCircleFilled /> },
+  online: { label: "已上线", color: "success", icon: <CheckCircleFilled /> },
   offline: { label: "已下线", color: "default", icon: <MinusCircleFilled /> },
   degraded: {
     label: "已降级",
@@ -146,7 +146,7 @@ const statusConfig: Record<
     icon: <ExclamationCircleFilled />,
   },
   draft: { label: "草稿", color: "default", icon: <InfoCircleFilled /> },
-  healthy: { label: "健康", color: "blue", icon: <CheckCircleFilled /> },
+  healthy: { label: "健康", color: "success", icon: <CheckCircleFilled /> },
   unhealthy: { label: "异常", color: "error", icon: <CloseCircleFilled /> },
   unknown: { label: "待检查", color: "default", icon: <InfoCircleFilled /> },
   invited: { label: "待接受", color: "processing", icon: <InfoCircleFilled /> },

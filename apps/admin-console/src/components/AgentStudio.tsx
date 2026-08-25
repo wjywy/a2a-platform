@@ -1043,7 +1043,10 @@ export function AgentStudio() {
               aria-label="会话管理"
             >
               <div className={styles.studioHistoryHeader}>
-                <b>会话</b>
+                <div className={styles.studioHistoryBrand}>
+                  <b>A2A Hub</b>
+                  <span>在线调试</span>
+                </div>
                 <div>
                   <Tooltip title="新建对话">
                     <Button
