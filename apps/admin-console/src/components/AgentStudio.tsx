@@ -137,7 +137,8 @@ export function AgentStudio() {
     [],
   );
   const [trajectory, setTrajectory] = useState<AgentRunTrajectory | null>();
-  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false);
   const [leftWidth, setLeftWidth] = useState(288);
   const [rightWidth, setRightWidth] = useState(280);
   const [dragging, setDragging] = useState<"left" | "right" | null>(null);
@@ -848,7 +849,10 @@ export function AgentStudio() {
   return (
     <>
       <div ref={studioRef} className={styles.agentStudio} style={layoutStyle}>
-        <aside className={styles.studioSidebar}>
+        <aside
+          className={`${styles.studioSidebar} ${settingsOpen ? styles.studioSidebarOpen : ""}`}
+          aria-label="Agent 调用配置"
+        >
           <div className={styles.studioBrand}>
             <span>Agent Studio</span>
             <Tag color="blue">A2A + LangGraph</Tag>
@@ -942,6 +946,24 @@ export function AgentStudio() {
                 onClick={() => setMobileHistoryOpen(true)}
               >
                 会话
+              </Button>
+              <Button
+                size="small"
+                type="text"
+                icon={<SettingOutlined />}
+                aria-label="打开 Agent 调用配置"
+                onClick={() => setSettingsOpen(true)}
+              >
+                配置
+              </Button>
+              <Button
+                size="small"
+                type="text"
+                icon={<PauseCircleOutlined />}
+                aria-label="打开运行轨迹"
+                onClick={() => setTraceOpen(true)}
+              >
+                轨迹
               </Button>
               {persistenceQueue.pendingCount ? (
                 <Tooltip title="部分消息正在等待网络恢复后保存">
@@ -1410,10 +1432,23 @@ export function AgentStudio() {
             if (event.key === "ArrowRight") adjustWidth("right", -16);
           }}
         />
-        <aside className={styles.studioTrace}>
+        <aside
+          className={`${styles.studioTrace} ${traceOpen ? styles.studioTraceOpen : ""}`}
+          aria-label="运行轨迹"
+        >
           <div className={styles.traceTitle}>
-            <b>运行轨迹</b>
-            <span>显示 LangGraph 节点与工具状态</span>
+            <div>
+              <b>运行轨迹</b>
+              <span>显示 LangGraph 节点与工具状态</span>
+            </div>
+            <Button
+              size="small"
+              type="text"
+              aria-label="关闭运行轨迹"
+              onClick={() => setTraceOpen(false)}
+            >
+              关闭
+            </Button>
           </div>
           {!trajectory && (
             <div className={styles.traceEmpty}>

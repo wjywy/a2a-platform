@@ -92,9 +92,6 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
   page,
 }, testInfo) => {
   await page.goto("/debug");
-  if (!testInfo.project.name.includes("mobile")) {
-    await expect(page.getByText("Agent Studio", { exact: true })).toBeVisible();
-  }
   if (testInfo.project.name.includes("mobile")) {
     await expect(
       page.getByRole("button", { name: "打开会话历史" }),
@@ -150,6 +147,28 @@ test("authenticated Studio sends a real message and keeps the user bubble conten
   await expect(composer).toBeEnabled({ timeout: 25_000 });
   const agentMessage = page.locator('[class*="studioAgentMessage"]').last();
   await expect(agentMessage.locator('[class*="markdownDocument"]')).not.toBeEmpty();
+});
+
+test("Studio closes a failed SSE stream and restores the composer", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name.includes("mobile"), "desktop interaction runs once");
+  await page.goto("/debug");
+  await page.route(
+    "**/api/admin/studio/agents/*/a2a/rest/message:stream",
+    async (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: 'data: {"error":{"code":"REMOTE_STREAM_ERROR","message":"模拟远端 Agent 失败"}}\n\n',
+      }),
+  );
+  const composer = page.getByPlaceholder("给 Agent 发送消息…");
+  await composer.fill("触发失败流");
+  await page.getByRole("button", { name: "发送" }).click();
+  await expect(page.getByRole("alert")).toContainText("模拟远端 Agent 失败");
+  await expect(composer).toBeEnabled();
+  await expect(page.getByRole("button", { name: "停止" })).toHaveCount(0);
 });
 
 test("conversation lifecycle endpoints retain history, idempotency, labels and export", async ({
@@ -235,7 +254,8 @@ test("restoring a saved conversation keeps the user-visible transcript and expos
   });
 
   await page.goto("/debug");
-  const studio = page.locator('[class*="studioSidebar"]');
+  await page.getByRole("button", { name: "打开 Agent 调用配置" }).click();
+  const studio = page.getByLabel("Agent 调用配置");
   await studio.getByRole("combobox").first().click();
   await page.getByText(tenant.displayName, { exact: true }).last().click();
   await studio.getByRole("combobox").nth(1).click();

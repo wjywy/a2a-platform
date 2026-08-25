@@ -186,14 +186,14 @@
 }
 
 .agentStudio {
+  position: relative;
   display: grid;
-  min-height: calc(100vh - 96px);
-  grid-template-columns:
-    var(--studio-left, 288px) 10px minmax(520px, 1fr)
-    10px var(--studio-right, 280px);
+  height: calc(100dvh - 148px);
+  min-height: 620px;
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: 0;
+  border-radius: 0;
   background: #fff;
 }
 
@@ -204,15 +204,43 @@
   gap: 14px;
   min-width: 0;
   overflow: auto;
-  padding: 18px;
-  background: #fbfcfe;
+  padding: 20px;
+  background: #f8fafc;
 }
 
 .studioSidebar {
-  border-right: 1px solid var(--line);
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(324px, calc(100vw - 40px));
+  border-right: 1px solid #e5e7eb;
+  box-shadow: 18px 0 40px rgba(15, 23, 42, 0.14);
+  transform: translateX(-105%);
+  transition: transform 180ms ease, visibility 180ms ease;
+  visibility: hidden;
+}
+.studioSidebarOpen {
+  transform: translateX(0);
+  visibility: visible;
 }
 .studioTrace {
-  border-left: 1px solid var(--line);
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(340px, calc(100vw - 40px));
+  border-left: 1px solid #e5e7eb;
+  box-shadow: -18px 0 40px rgba(15, 23, 42, 0.14);
+  transform: translateX(105%);
+  transition: transform 180ms ease, visibility 180ms ease;
+  visibility: hidden;
+}
+.studioTraceOpen {
+  transform: translateX(0);
+  visibility: visible;
 }
 .studioBrand {
   display: flex;
@@ -288,11 +316,7 @@
 }
 
 .studioResizer {
-  position: relative;
-  z-index: 2;
-  cursor: col-resize;
-  touch-action: none;
-  background: #fff;
+  display: none;
 }
 .studioResizer::after {
   position: absolute;
@@ -325,9 +349,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 66px;
-  padding: 13px 22px;
-  border-bottom: 1px solid var(--line);
+  min-height: 62px;
+  padding: 11px max(20px, calc((100% - 1120px) / 2));
+  border-bottom: 1px solid #eceff3;
 }
 .studioHeaderActions {
   display: flex;
@@ -347,7 +371,7 @@
   font-size: 12px;
   font-weight: 650;
 }
-.studioHeader div {
+.studioHeader > div:first-child {
   display: grid;
   gap: 3px;
   min-width: 0;
@@ -355,7 +379,7 @@
 .studioHeader b {
   font-size: 14px;
 }
-.studioHeader span {
+.studioHeader > div:first-child span {
   overflow: hidden;
   color: var(--muted);
   font-size: 11px;
@@ -365,21 +389,21 @@
 .studioChatShell {
   display: grid;
   min-height: 0;
-  grid-template-columns: 214px minmax(0, 1fr);
+  grid-template-columns: 276px minmax(0, 1fr);
 }
 .studioHistory {
   display: flex;
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid var(--line);
-  background: #f7f9fc;
+  border-right: 1px solid #eceff3;
+  background: #f8fafc;
 }
 .studioHistoryHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 54px;
+  min-height: 58px;
   padding: 0 10px 0 14px;
   border-bottom: 1px solid #e7ebf1;
 }
@@ -430,15 +454,15 @@
   border-radius: 8px;
 }
 .studioHistoryItemActive {
-  background: #e7f0ff;
-  box-shadow: inset 2px 0 0 var(--blue);
+  background: #e9edf2;
+  box-shadow: none;
 }
 .studioHistorySelect {
   display: grid;
   min-width: 0;
   gap: 3px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text);
   cursor: pointer;
@@ -446,7 +470,7 @@
   text-align: left;
 }
 .studioHistorySelect:hover {
-  background: #edf2fa;
+  background: #edf1f5;
 }
 .studioHistorySelect:disabled {
   cursor: wait;
@@ -521,9 +545,9 @@
   flex-direction: column;
   /* A transcript is a vertical stack, not an equal-height card grid. */
   align-items: flex-start;
-  gap: 18px;
+  gap: 24px;
   overflow-y: auto;
-  padding: 32px clamp(22px, 4vw, 72px);
+  padding: 38px max(20px, calc((100% - 920px) / 2)) 28px;
   background: #fff;
 }
 .studioEmpty {
@@ -585,17 +609,19 @@
 .studioUserMessage {
   align-self: flex-end;
   width: fit-content;
-  max-width: min(720px, 100%);
+  max-width: min(620px, 78%);
+  margin-right: max(0px, calc((100% - 760px) / 2));
   display: flow-root;
-  border-radius: 18px 18px 4px 18px;
-  background: #eaf2ff;
-  color: #14223a;
-  padding: 13px 16px;
+  border-radius: 20px;
+  background: #eef2f6;
+  color: #172033;
+  padding: 10px 14px;
 }
 .studioAgentMessage {
   align-self: flex-start;
-  width: min(720px, 100%);
-  padding: 2px 0 8px;
+  width: min(760px, 100%);
+  margin-inline: auto;
+  padding: 2px 0 10px;
   color: #1d2939;
 }
 .studioMessageActions {
@@ -646,7 +672,7 @@
   align-items: center;
   gap: 7px;
   margin-bottom: 7px;
-  color: #65758b;
+  color: #5e6a7d;
   font-size: 11px;
   font-weight: 750;
 }
@@ -666,7 +692,7 @@
 .studioThinking {
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
+  align-self: center;
   gap: 8px;
   color: #64748b;
   font-size: 12px;
@@ -687,24 +713,25 @@
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
-  padding: 15px clamp(22px, 4vw, 72px) 32px;
-  border-top: 1px solid #edf0f5;
+  padding: 16px max(20px, calc((100% - 860px) / 2)) 34px;
+  border-top: 1px solid #f1f3f5;
   background: #fff;
 }
 .studioComposer :global(.ant-input-textarea) {
-  border: 1px solid #ced8e7;
-  border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(22, 38, 62, 0.06);
+  border: 1px solid #d8dde5;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.08);
 }
 .studioComposer :global(.ant-input-textarea:focus-within) {
   border-color: #6ba2f7;
   box-shadow: 0 0 0 3px rgba(44, 107, 237, 0.12);
 }
 .studioComposer :global(.ant-btn) {
-  min-height: 40px;
-  border-radius: 10px;
+  min-height: 42px;
+  border-radius: 21px;
 }
 .studioComposer :global(.ant-input) {
   resize: none;
@@ -712,7 +739,7 @@
 .studioComposerHint {
   position: absolute;
   bottom: 9px;
-  left: clamp(22px, 4vw, 72px);
+  left: max(20px, calc((100% - 860px) / 2));
   color: #94a0b1;
   font-size: 10px;
 }
@@ -3249,7 +3276,8 @@
   }
 
   .agentStudio {
-    min-height: calc(100dvh - 132px);
+    height: calc(100dvh - 132px);
+    min-height: 0;
     border: 0;
     border-radius: 0;
     grid-template-columns: 1fr;

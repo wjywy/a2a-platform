@@ -11,6 +11,12 @@ type Config = () => {
     status: "connecting" | "receiving" | "completed" | "error",
   ) => void;
 };
+
+// The gateway imposes a 60-second invocation ceiling.  Keep a small client
+// margin so a misbehaving proxy or a remote Agent that never closes its SSE
+// connection cannot leave the composer in a permanent loading state.
+const STREAM_TERMINAL_TIMEOUT_MS = 70_000;
+
 function findTexts(value: unknown, output: string[] = []): string[] {
   if (!value || typeof value !== "object") return output;
   if (Array.isArray(value)) {
@@ -22,6 +28,20 @@ function findTexts(value: unknown, output: string[] = []): string[] {
     output.push(row.text.trim());
   Object.values(row).forEach((item) => findTexts(item, output));
   return output;
+}
+
+function streamFailure(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const row = value as Record<string, unknown>;
+  if (typeof row.error === "string" && row.error.trim()) return row.error;
+  if (row.error && typeof row.error === "object") {
+    const error = row.error as Record<string, unknown>;
+    if (typeof error.message === "string" && error.message.trim())
+      return error.message;
+  }
+  if (typeof row.message === "string" && row.code && row.message.trim())
+    return row.message;
+  return;
 }
 function lastText(message: UIMessage | undefined) {
   return (
@@ -72,16 +92,23 @@ export class A2AChatTransport implements ChatTransport<UIMessage> {
         onStatus?.("connecting");
         try {
           let emitted = "";
+          const terminalDeadline = AbortSignal.timeout(
+            STREAM_TERMINAL_TIMEOUT_MS,
+          );
           for await (const event of streamStudioAgent({
             slug,
             token,
             tenantId,
             question: prompt,
             continueTaskId: taskId,
-            signal: options.abortSignal,
+            signal: options.abortSignal
+              ? AbortSignal.any([options.abortSignal, terminalDeadline])
+              : terminalDeadline,
           })) {
             onEvent?.(event.data);
             onStatus?.("receiving");
+            const failure = streamFailure(event.data);
+            if (failure) throw new Error(failure);
             const text = [...new Set(findTexts(event.data))].join("\n");
             // A2A status snapshots often repeat the complete message. Emit only
             // the suffix so the AI SDK transcript remains readable.
@@ -98,10 +125,20 @@ export class A2AChatTransport implements ChatTransport<UIMessage> {
           onStatus?.("completed");
           controller.close();
         } catch (error) {
+          if (options.abortSignal?.aborted) {
+            controller.close();
+            return;
+          }
           onStatus?.("error");
+          const errorText =
+            error instanceof DOMException && error.name === "TimeoutError"
+              ? "Agent 在 70 秒内没有返回终态。请重试，或检查该 Agent 的运行日志。"
+              : error instanceof Error
+                ? error.message
+                : "A2A 调用失败";
           controller.enqueue({
             type: "error",
-            errorText: error instanceof Error ? error.message : "A2A 调用失败",
+            errorText,
           });
           controller.close();
         }
@@ -113,4 +150,8 @@ export class A2AChatTransport implements ChatTransport<UIMessage> {
   }
 }
 
-export const __a2aTransportInternals = { promptForMessages, findTexts };
+export const __a2aTransportInternals = {
+  promptForMessages,
+  findTexts,
+  streamFailure,
+};
