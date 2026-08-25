@@ -423,7 +423,7 @@ describe("self registration and the safe Agent catalog", () => {
       .set("Authorization", `Bearer ${registration.body.accessToken}`);
     expect(catalog.status).toBe(200);
     const ownFixtures = catalog.body.items.filter((agent: { slug: string }) =>
-      agent.slug.startsWith("catalog-"),
+      agent.slug.startsWith("catalog-") && agent.slug.endsWith(unique),
     );
     expect(ownFixtures.map((agent: { slug: string }) => agent.slug)).toEqual([
       publicSlug,
