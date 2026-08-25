@@ -93,10 +93,15 @@ jobs:
             trap diagnose_deploy_failure ERR
             cd "$app_dir"
             git pull --ff-only origin main
+            # Compose otherwise builds API, Worker and Console concurrently.
+            # On the 2 GB host that can OOM-kill the currently serving stack.
+            sudo env COMPOSE_PARALLEL_LIMIT=1 docker compose --env-file .env \
+              -f infra/docker-compose.yml \
+              -f infra/docker-compose.prod.yml build
             sudo docker compose --env-file .env \
               -f infra/docker-compose.yml \
               -f infra/docker-compose.prod.yml \
-              up -d --build --remove-orphans
+              up -d --no-build --remove-orphans
             # Caddy is deliberately host-networked so it can terminate TLS on
             # 80/443. Reload its versioned route configuration after the app
             # containers are healthy; this exposes health and A2A paths while
