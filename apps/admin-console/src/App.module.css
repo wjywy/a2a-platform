@@ -334,6 +334,11 @@
   align-items: center;
   gap: 8px;
 }
+.studioMobileHistoryToggle,
+.studioMobileHistoryClose,
+.studioHistoryBackdrop {
+  display: none;
+}
 .studioLiveStatus {
   display: inline-flex;
   align-items: center;
@@ -377,6 +382,10 @@
   min-height: 54px;
   padding: 0 10px 0 14px;
   border-bottom: 1px solid #e7ebf1;
+}
+.studioHistoryHeader > div {
+  display: flex;
+  align-items: center;
 }
 .studioHistoryHeader b {
   color: var(--ink);
@@ -3272,6 +3281,10 @@
     display: none;
   }
 
+  .studioMobileHistoryToggle {
+    display: inline-flex;
+  }
+
   .studioChatShell {
     grid-template-rows: auto minmax(0, 1fr);
   }
@@ -3294,50 +3307,67 @@
     grid-template-columns: 1fr;
   }
 
+  /* ChatGPT-style history drawer: it never competes with the transcript for
+     vertical space and is bounded by the device viewport. */
   .studioHistory {
-    max-height: 138px;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+    position: fixed;
+    z-index: 30;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(calc(100vw - 54px), 340px);
+    max-width: calc(100vw - 54px);
+    max-height: none;
+    border: 0;
+    border-radius: 0 14px 14px 0;
     background: #fff;
+    box-shadow: 16px 0 38px rgba(20, 34, 58, 0.2);
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+    visibility: hidden;
+  }
+
+  .studioHistoryMobileOpen {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .studioHistoryBackdrop {
+    position: fixed;
+    z-index: 29;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: rgba(16, 29, 49, 0.36);
   }
 
   .studioHistoryHeader {
-    min-height: 42px;
+    min-height: 52px;
     padding: 0 10px 0 14px;
   }
 
-  .studioHistoryToggle,
-  .studioHistorySearch,
-  .studioHistoryLabelFilter,
-  .studioHistoryPagination {
-    display: none;
+  .studioMobileHistoryClose {
+    display: inline-flex;
   }
 
   .studioHistoryList {
     display: grid;
-    min-height: 76px;
-    grid-auto-columns: minmax(172px, 74%);
-    grid-auto-flow: column;
-    grid-template-columns: none;
+    min-height: 0;
+    grid-template-columns: 1fr;
     gap: 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 7px 12px 10px;
-    scroll-snap-type: x proximity;
-  }
-
-  .studioHistoryItem {
-    scroll-snap-align: start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 7px 10px 12px;
   }
 
   .studioHistorySelect {
-    min-height: 66px;
+    min-height: 64px;
     padding: 8px 30px 8px 9px;
   }
 
   .studioHistoryEmpty,
   .studioHistoryLoading {
-    padding: 10px 2px;
+    padding: 18px 4px;
   }
 
   .studioUserMessage {

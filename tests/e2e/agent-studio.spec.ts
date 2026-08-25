@@ -95,10 +95,23 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
   if (!testInfo.project.name.includes("mobile")) {
     await expect(page.getByText("Agent Studio", { exact: true })).toBeVisible();
   }
-  await expect(page.getByText("会话", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "新建对话" }).first(),
-  ).toBeVisible();
+  if (testInfo.project.name.includes("mobile")) {
+    await expect(
+      page.getByRole("button", { name: "打开会话历史" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "打开会话历史" }).click();
+    await expect(page.getByLabel("会话管理")).toBeVisible();
+    await expect(page.getByPlaceholder("搜索会话")).toBeVisible();
+    await page.getByRole("button", { name: "关闭会话历史" }).first().click();
+    await expect(page.getByPlaceholder("搜索会话")).toBeHidden();
+  } else {
+    await expect(
+      page.getByLabel("会话管理").getByText("会话", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "新建对话" }).first(),
+    ).toBeVisible();
+  }
   await expect(page.getByRole("button", { name: /发送/ })).toBeVisible();
 
   const dimensions = await page.evaluate(() => ({

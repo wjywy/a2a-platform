@@ -158,6 +158,7 @@ export function AgentStudio() {
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] =
     useState<StudioLabel["color"]>("blue");
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const draft = useStudioDraft(tenantId, slug, conversationId);
   const prompt = draft.value;
   const studioRef = useRef<HTMLDivElement>(null);
@@ -933,6 +934,15 @@ export function AgentStudio() {
               </span>
             </div>
             <div className={styles.studioHeaderActions}>
+              <Button
+                className={styles.studioMobileHistoryToggle}
+                size="small"
+                aria-label="打开会话历史"
+                icon={<MessageOutlined />}
+                onClick={() => setMobileHistoryOpen(true)}
+              >
+                会话
+              </Button>
               {persistenceQueue.pendingCount ? (
                 <Tooltip title="部分消息正在等待网络恢复后保存">
                   <Button
@@ -1005,18 +1015,34 @@ export function AgentStudio() {
             </div>
           </header>
           <div className={styles.studioChatShell}>
-            <aside className={styles.studioHistory} aria-label="会话管理">
+            <aside
+              className={`${styles.studioHistory} ${mobileHistoryOpen ? styles.studioHistoryMobileOpen : ""}`}
+              aria-label="会话管理"
+            >
               <div className={styles.studioHistoryHeader}>
                 <b>会话</b>
-                <Tooltip title="新建对话">
+                <div>
+                  <Tooltip title="新建对话">
+                    <Button
+                      aria-label="新建对话"
+                      type="text"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        startNewConversation();
+                        setMobileHistoryOpen(false);
+                      }}
+                      disabled={isBusy}
+                    />
+                  </Tooltip>
                   <Button
-                    aria-label="新建对话"
+                    className={styles.studioMobileHistoryClose}
+                    aria-label="关闭会话历史"
                     type="text"
-                    icon={<PlusOutlined />}
-                    onClick={startNewConversation}
-                    disabled={isBusy}
-                  />
-                </Tooltip>
+                    onClick={() => setMobileHistoryOpen(false)}
+                  >
+                    关闭
+                  </Button>
+                </div>
               </div>
               <button
                 className={`${styles.studioHistoryToggle} ${showArchived ? styles.studioHistoryToggleActive : ""}`}
@@ -1079,7 +1105,10 @@ export function AgentStudio() {
                         <button
                           type="button"
                           className={styles.studioHistorySelect}
-                          onClick={() => void openConversation(conversation)}
+                          onClick={() => {
+                            void openConversation(conversation);
+                            setMobileHistoryOpen(false);
+                          }}
                           disabled={isBusy}
                         >
                           <b>{conversation.title}</b>
@@ -1178,6 +1207,14 @@ export function AgentStudio() {
                 </div>
               )}
             </aside>
+            {mobileHistoryOpen && (
+              <button
+                className={styles.studioHistoryBackdrop}
+                type="button"
+                aria-label="关闭会话历史"
+                onClick={() => setMobileHistoryOpen(false)}
+              />
+            )}
             <section className={styles.studioDialogue} aria-label="Agent 对话">
               {(chat.error || conversationError) && (
                 <div className={styles.studioError} role="alert">
