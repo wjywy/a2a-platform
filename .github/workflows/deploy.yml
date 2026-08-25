@@ -57,6 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      - uses: actions/checkout@v4
+
       - name: Configure SSH
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -68,6 +70,25 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Build release images on the runner
+        run: |
+          # The production instance has 1.8 GiB RAM and no swap. Building
+          # Node images there OOM-killed Postgres and the API, so build on the
+          # GitHub runner and transfer the tagged images over the existing SSH
+          # deployment channel instead.
+          docker compose -f infra/docker-compose.yml build
+          docker save \
+            -o "$RUNNER_TEMP/a2a-platform-images.tar" \
+            infra-api infra-migrate infra-worker infra-console
+
+      - name: Transfer release images
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          scp "$RUNNER_TEMP/a2a-platform-images.tar" \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/a2a-platform-images.tar"
 
       - name: Deploy
         env:
@@ -93,11 +114,7 @@ jobs:
             trap diagnose_deploy_failure ERR
             cd "$app_dir"
             git pull --ff-only origin main
-            # Compose otherwise builds API, Worker and Console concurrently.
-            # On the 2 GB host that can OOM-kill the currently serving stack.
-            sudo env COMPOSE_PARALLEL_LIMIT=1 docker compose --env-file .env \
-              -f infra/docker-compose.yml \
-              -f infra/docker-compose.prod.yml build
+            sudo docker load -i /tmp/a2a-platform-images.tar
             sudo docker compose --env-file .env \
               -f infra/docker-compose.yml \
               -f infra/docker-compose.prod.yml \
