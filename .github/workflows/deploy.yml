@@ -77,6 +77,20 @@ jobs:
           ssh "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
             set -euo pipefail
             app_dir="$HOME/apps/a2a-platform"
+            diagnose_deploy_failure() {
+              local status=$?
+              echo "::error::Remote deployment failed; collecting container diagnostics."
+              cd "$app_dir" || exit "$status"
+              sudo docker compose --env-file .env \
+                -f infra/docker-compose.yml \
+                -f infra/docker-compose.prod.yml ps || true
+              sudo docker compose --env-file .env \
+                -f infra/docker-compose.yml \
+                -f infra/docker-compose.prod.yml \
+                logs --tail=180 migrate api nginx worker || true
+              exit "$status"
+            }
+            trap diagnose_deploy_failure ERR
             cd "$app_dir"
             git pull --ff-only origin main
             sudo docker compose --env-file .env \
