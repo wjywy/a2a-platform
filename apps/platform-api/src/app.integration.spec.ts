@@ -20,6 +20,26 @@ import {
   getTaskDetail,
   markTaskCancelled,
 } from "./task-service.js";
+import { handleSymbolMessage } from "./symbol-service.js";
+import {
+  conversationToJson,
+  conversationToMarkdown,
+  conversationToText,
+} from "./studio-conversation-export.js";
+import {
+  appendStudioMessage,
+  createStudioLabel,
+  createStudioConversation,
+  forkStudioConversation,
+  getStudioConversation,
+  listStudioConversationEvents,
+  listConversationLabels,
+  replaceStudioConversationLabels,
+  recordStudioMessageFeedback,
+  searchStudioConversations,
+  updateStudioConversation,
+  updateStudioMessage,
+} from "./studio-conversation-service.js";
 
 const admin = "Bearer dev-admin-token";
 const unique = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -989,6 +1009,354 @@ describe("API key storage and gateway authorization", () => {
         expect.objectContaining({ window: "minute", limit: 1, remaining: 0 }),
       ]),
     );
+  });
+});
+
+describe("Symbol conversation management", () => {
+  it("persists, reads, renames, archives and restores an interrupted conversation", async () => {
+    const tenant = await createTenant(`symbol-conversation-${unique}`);
+    const created = await handleSymbolMessage("symbol-market", tenant.id, {
+      message: { parts: [{ text: "我想研究一家科技公司" }] },
+    });
+    const taskId = String(created.id);
+    const list = await request(createApp())
+      .get(
+        `/api/admin/symbol-conversations?tenantId=${tenant.id}&agentSlug=symbol-market`,
+      )
+      .set("Authorization", admin);
+    expect(list.status).toBe(200);
+    expect(list.body.conversations).toHaveLength(1);
+    expect(list.body.conversations[0]).toMatchObject({
+      taskId,
+      state: "collecting",
+    });
+
+    const detail = await request(createApp())
+      .get(`/api/admin/symbol-conversations/${taskId}?tenantId=${tenant.id}`)
+      .set("Authorization", admin);
+    expect(detail.status).toBe(200);
+    expect(detail.body.conversation.transcript).toHaveLength(2);
+    expect(
+      detail.body.conversation.transcript.map(
+        (item: { role: string }) => item.role,
+      ),
+    ).toEqual(["user", "agent"]);
+
+    const renamed = await request(createApp())
+      .patch(`/api/admin/symbol-conversations/${taskId}?tenantId=${tenant.id}`)
+      .set("Authorization", admin)
+      .send({ title: "科技公司研究待补充" });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.conversation.title).toBe("科技公司研究待补充");
+
+    const archived = await request(createApp())
+      .post(
+        `/api/admin/symbol-conversations/${taskId}/archive?tenantId=${tenant.id}`,
+      )
+      .set("Authorization", admin)
+      .send({ archived: true });
+    expect(archived.status).toBe(200);
+    expect(archived.body.conversation.archivedAt).toBeTruthy();
+    const active = await request(createApp())
+      .get(
+        `/api/admin/symbol-conversations?tenantId=${tenant.id}&agentSlug=symbol-market`,
+      )
+      .set("Authorization", admin);
+    expect(active.body.conversations).toHaveLength(0);
+
+    const restored = await request(createApp())
+      .post(
+        `/api/admin/symbol-conversations/${taskId}/archive?tenantId=${tenant.id}`,
+      )
+      .set("Authorization", admin)
+      .send({ archived: false });
+    expect(restored.status).toBe(200);
+    expect(restored.body.conversation.archivedAt).toBeUndefined();
+  });
+});
+
+describe("generic Agent Studio conversation persistence", () => {
+  it("keeps ordered messages and allows every registered Agent to manage its own history", async () => {
+    const tenant = await createTenant(`studio-conversation-${unique}`);
+    const created = await createStudioConversation(
+      { tenantId: tenant.id, agentSlug: "symbol-market", title: "AAPL 研究" },
+      "local-admin",
+    );
+    const user = await appendStudioMessage(created.id, tenant.id, {
+      role: "user",
+      content: "分析 AAPL 的近期走势",
+      status: "completed",
+    });
+    const assistant = await appendStudioMessage(created.id, tenant.id, {
+      role: "assistant",
+      content: "正在收集市场数据",
+      status: "streaming",
+      taskId: "a2a-task-studio-1",
+    });
+    const completed = await updateStudioMessage(
+      created.id,
+      assistant.id,
+      tenant.id,
+      {
+        status: "completed",
+        content: "AAPL 近期波动需要结合成交量继续判断。",
+        taskId: "a2a-task-studio-1",
+      },
+    );
+    expect(user.sequence).toBe(1);
+    expect(completed.sequence).toBe(2);
+
+    const detail = await getStudioConversation(created.id, tenant.id);
+    expect(detail.title).toBe("AAPL 研究");
+    expect(detail.messageCount).toBe(2);
+    expect(detail.lastTaskId).toBe("a2a-task-studio-1");
+    expect(
+      detail.messages.map((message) => [message.role, message.status]),
+    ).toEqual([
+      ["user", "completed"],
+      ["assistant", "completed"],
+    ]);
+
+    const searched = await searchStudioConversations({
+      tenantId: tenant.id,
+      agentSlug: "symbol-market",
+      search: "成交量",
+      page: 1,
+      pageSize: 20,
+    });
+    expect(searched.items.map((conversation) => conversation.id)).toContain(
+      created.id,
+    );
+    const archived = await updateStudioConversation(created.id, tenant.id, {
+      status: "archived",
+      title: "已归档 AAPL 研究",
+    });
+    expect(archived.status).toBe("archived");
+    expect(archived.archivedAt).toBeTruthy();
+  });
+
+  it("enforces tenant isolation for generic conversation messages", async () => {
+    const owner = await createTenant(`studio-owner-${unique}`);
+    const outsider = await createTenant(`studio-outsider-${unique}`);
+    const conversation = await createStudioConversation(
+      { tenantId: owner.id, agentSlug: "symbol-market" },
+      "local-admin",
+    );
+    await expect(
+      getStudioConversation(conversation.id, outsider.id),
+    ).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+    await expect(
+      appendStudioMessage(conversation.id, outsider.id, {
+        role: "user",
+        content: "越权写入",
+      }),
+    ).rejects.toMatchObject({ code: "RESOURCE_NOT_FOUND" });
+  });
+
+  it("preserves an edit revision, forks a bounded branch and stores message feedback", async () => {
+    const tenant = await createTenant(`studio-lifecycle-${unique}`);
+    const source = await createStudioConversation(
+      { tenantId: tenant.id, agentSlug: "symbol-market", title: "原始研究" },
+      "local-admin",
+    );
+    const question = await appendStudioMessage(
+      source.id,
+      tenant.id,
+      { role: "user", content: "分析 AAPL 的价格与新闻" },
+      "local-admin",
+    );
+    const answer = await appendStudioMessage(
+      source.id,
+      tenant.id,
+      { role: "assistant", content: "先看近 20 个交易日的波动。" },
+      "local-admin",
+    );
+    await updateStudioMessage(
+      source.id,
+      question.id,
+      tenant.id,
+      { content: "分析 AAPL 的价格、新闻和风险" },
+      "local-admin",
+    );
+    const revisions = await query<{ content: string; edited_by: string }>(
+      "SELECT content,edited_by FROM studio_message_revisions WHERE message_id=$1",
+      [question.id],
+    );
+    expect(revisions).toEqual([
+      { content: "分析 AAPL 的价格与新闻", edited_by: "local-admin" },
+    ]);
+
+    const branch = await forkStudioConversation(
+      source.id,
+      tenant.id,
+      { title: "AAPL 风险分支", throughSequence: question.sequence },
+      "local-admin",
+    );
+    expect(branch.title).toBe("AAPL 风险分支");
+    expect(branch.messages).toHaveLength(1);
+    expect(branch.messages[0].content).toContain("风险");
+    expect(branch.messages[0].id).not.toBe(question.id);
+    expect(branch.messages[0].sequence).toBe(1);
+
+    const feedback = await recordStudioMessageFeedback(
+      source.id,
+      answer.id,
+      tenant.id,
+      { rating: -1, note: "缺少新闻风险来源" },
+      "local-admin",
+    );
+    expect(feedback).toMatchObject({ rating: -1, note: "缺少新闻风险来源" });
+    const events = await listStudioConversationEvents(source.id, tenant.id);
+    expect(events.map((event) => event.kind)).toEqual(
+      expect.arrayContaining(["message_updated", "feedback_recorded"]),
+    );
+  });
+
+  it("exposes lifecycle actions through tenant-scoped admin routes", async () => {
+    const tenant = await createTenant(`studio-routes-${unique}`);
+    const app = createApp();
+    const created = await request(app)
+      .post("/api/admin/studio-conversations")
+      .set("Authorization", admin)
+      .send({
+        tenantId: tenant.id,
+        agentSlug: "symbol-market",
+        title: "路由会话",
+      });
+    expect(created.status).toBe(201);
+    const conversationId = created.body.conversation.id as string;
+
+    const message = await request(app)
+      .post(`/api/admin/studio-conversations/${conversationId}/messages`)
+      .set("Authorization", admin)
+      .send({
+        tenantId: tenant.id,
+        role: "user",
+        content: "请分析 TSLA 的新闻风险",
+        clientRequestId: crypto.randomUUID(),
+      });
+    expect(message.status).toBe(201);
+    expect(message.body.message.sequence).toBe(1);
+    const duplicate = await request(app)
+      .post(`/api/admin/studio-conversations/${conversationId}/messages`)
+      .set("Authorization", admin)
+      .send({
+        tenantId: tenant.id,
+        role: "user",
+        content: "请分析 TSLA 的新闻风险",
+        clientRequestId: message.body.message.clientRequestId,
+      });
+    expect(duplicate.status).toBe(201);
+    expect(duplicate.body.message.id).toBe(message.body.message.id);
+
+    const edited = await request(app)
+      .patch(
+        `/api/admin/studio-conversations/${conversationId}/messages/${message.body.message.id}`,
+      )
+      .set("Authorization", admin)
+      .send({
+        tenantId: tenant.id,
+        content: "请分析 TSLA 的新闻、波动与风险",
+      });
+    expect(edited.status).toBe(200);
+    const revisions = await request(app)
+      .get(
+        `/api/admin/studio-conversations/${conversationId}/messages/${message.body.message.id}/revisions?tenantId=${tenant.id}`,
+      )
+      .set("Authorization", admin);
+    expect(revisions.status).toBe(200);
+    expect(revisions.body.revisions[0].content).toBe("请分析 TSLA 的新闻风险");
+
+    const fork = await request(app)
+      .post(`/api/admin/studio-conversations/${conversationId}/fork`)
+      .set("Authorization", admin)
+      .send({ tenantId: tenant.id, throughSequence: 1 });
+    expect(fork.status).toBe(201);
+    expect(fork.body.conversation.messages).toHaveLength(1);
+
+    const rated = await request(app)
+      .put(
+        `/api/admin/studio-conversations/${conversationId}/messages/${message.body.message.id}/feedback`,
+      )
+      .set("Authorization", admin)
+      .send({ tenantId: tenant.id, rating: 1 });
+    expect(rated.status).toBe(200);
+    expect(rated.body.feedback.rating).toBe(1);
+    const events = await request(app)
+      .get(
+        `/api/admin/studio-conversations/${conversationId}/events?tenantId=${tenant.id}`,
+      )
+      .set("Authorization", admin);
+    expect(events.status).toBe(200);
+    expect(
+      events.body.events.map((event: { kind: string }) => event.kind),
+    ).toEqual(
+      expect.arrayContaining(["conversation_created", "feedback_recorded"]),
+    );
+  });
+
+  it("keeps labels tenant-scoped and searchable without changing the transcript", async () => {
+    const tenant = await createTenant(`studio-labels-${unique}`);
+    const other = await createTenant(`studio-label-other-${unique}`);
+    const conversation = await createStudioConversation(
+      { tenantId: tenant.id, agentSlug: "symbol-market", title: "标签会话" },
+      "local-admin",
+    );
+    const label = await createStudioLabel(
+      { tenantId: tenant.id, name: "待跟进", color: "gold" },
+      "local-admin",
+    );
+    const foreign = await createStudioLabel(
+      { tenantId: other.id, name: "别的租户", color: "red" },
+      "local-admin",
+    );
+    await replaceStudioConversationLabels(
+      conversation.id,
+      tenant.id,
+      { labelIds: [label.id] },
+      "local-admin",
+    );
+    expect(
+      await listConversationLabels(conversation.id, tenant.id),
+    ).toMatchObject([{ id: label.id, name: "待跟进", color: "gold" }]);
+    await expect(
+      replaceStudioConversationLabels(
+        conversation.id,
+        tenant.id,
+        { labelIds: [foreign.id] },
+        "local-admin",
+      ),
+    ).rejects.toMatchObject({ code: "STUDIO_LABEL_TENANT_MISMATCH" });
+    const matching = await searchStudioConversations({
+      tenantId: tenant.id,
+      labelId: label.id,
+      page: 1,
+      pageSize: 10,
+    });
+    expect(matching.items.map((item) => item.id)).toContain(conversation.id);
+  });
+
+  it("exports a portable transcript without internal credentials or audit actor ids", async () => {
+    const tenant = await createTenant(`studio-export-${unique}`);
+    const conversation = await createStudioConversation(
+      { tenantId: tenant.id, agentSlug: "symbol-market", title: "导出会话" },
+      "sensitive-internal-actor",
+    );
+    await appendStudioMessage(conversation.id, tenant.id, {
+      role: "user",
+      content: "请关注 NVDA 风险",
+      metadata: { internalCredential: "must-not-export" },
+    });
+    const detail = await getStudioConversation(conversation.id, tenant.id);
+    const markdown = conversationToMarkdown(detail);
+    const text = conversationToText(detail);
+    const json = conversationToJson(detail);
+    expect(markdown).toContain("# 导出会话");
+    expect(markdown).toContain("请关注 NVDA 风险");
+    expect(text).toContain("用户");
+    expect(json).toContain('"schemaVersion": 1');
+    expect(json).not.toContain("sensitive-internal-actor");
+    expect(json).not.toContain("must-not-export");
   });
 });
 

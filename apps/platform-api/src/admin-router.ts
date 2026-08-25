@@ -69,6 +69,30 @@ import {
 } from "./task-service.js";
 import { getSymbolRunTrajectory } from "./symbol-graph.js";
 import {
+  archiveSymbolConversation,
+  getSymbolConversation,
+  isSymbolAgentSlug,
+  listSymbolConversations,
+  renameSymbolConversation,
+} from "./symbol-service.js";
+import {
+  appendStudioMessage,
+  createStudioLabel,
+  createStudioConversation,
+  deleteStudioLabel,
+  forkStudioConversation,
+  getStudioConversation,
+  listStudioConversationEvents,
+  listStudioMessageRevisions,
+  listStudioLabels,
+  recordStudioMessageFeedback,
+  replaceStudioConversationLabels,
+  searchStudioConversations,
+  updateStudioConversation,
+  updateStudioMessage,
+} from "./studio-conversation-service.js";
+import { exportStudioConversation } from "./studio-conversation-export.js";
+import {
   getSetting,
   getSettingValue,
   listSettings,
@@ -826,6 +850,358 @@ router.get(
   }),
 );
 router.get(
+  "/symbol-conversations",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    const slug = optionalQuery(req, "agentSlug");
+    if (!tenantId || !slug || !isSymbolAgentSlug(slug))
+      throw new AppError(
+        400,
+        "SYMBOL_CONVERSATION_QUERY_INVALID",
+        "必须指定有效的 tenantId 与 agentSlug。",
+      );
+    res.json({
+      conversations: await listSymbolConversations(
+        tenantId,
+        slug,
+        optionalQuery(req, "includeArchived") === "true",
+      ),
+    });
+  }),
+);
+router.get(
+  "/studio-conversations",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    res.json(await searchStudioConversations({ ...req.query, tenantId }));
+  }),
+);
+router.get(
+  "/studio-labels",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    res.json({ labels: await listStudioLabels(tenantId) });
+  }),
+);
+router.post(
+  "/studio-labels",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, req.body?.tenantId);
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const label = await createStudioLabel(
+      { ...req.body, tenantId },
+      actor(req),
+    );
+    await writeAudit(
+      auditContext(req, tenantId),
+      "studio_label.created",
+      { type: "studio_label", id: label.id },
+      { name: label.name, color: label.color },
+    );
+    res.status(201).json({ label });
+  }),
+);
+router.delete(
+  "/studio-labels/:labelId",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const labelId = id(req, "labelId");
+    await deleteStudioLabel(labelId, tenantId);
+    await writeAudit(auditContext(req, tenantId), "studio_label.deleted", {
+      type: "studio_label",
+      id: labelId,
+    });
+    res.status(204).end();
+  }),
+);
+router.post(
+  "/studio-conversations",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, req.body?.tenantId);
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const conversation = await createStudioConversation(
+      { ...req.body, tenantId },
+      actor(req),
+    );
+    await writeAudit(
+      auditContext(req, tenantId),
+      "studio_conversation.created",
+      { type: "studio_conversation", id: conversation.id },
+      { agentSlug: conversation.agentSlug },
+    );
+    res.status(201).json({ conversation });
+  }),
+);
+router.get(
+  "/studio-conversations/:conversationId",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    res.json({
+      conversation: await getStudioConversation(
+        id(req, "conversationId"),
+        tenantId,
+      ),
+    });
+  }),
+);
+router.get(
+  "/studio-conversations/:conversationId/export",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const format = z
+      .enum(["markdown", "json", "text"])
+      .default("markdown")
+      .parse(optionalQuery(req, "format"));
+    const exported = await exportStudioConversation(
+      id(req, "conversationId"),
+      tenantId,
+      format,
+    );
+    const filename = `a2a-conversation-${id(req, "conversationId").slice(0, 8)}.${exported.extension}`;
+    res
+      .type(exported.contentType)
+      .setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+      .send(exported.content);
+  }),
+);
+router.patch(
+  "/studio-conversations/:conversationId",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(
+      req,
+      req.body?.tenantId ?? optionalQuery(req, "tenantId"),
+    );
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const conversation = await updateStudioConversation(
+      id(req, "conversationId"),
+      tenantId,
+      req.body,
+      actor(req),
+    );
+    await writeAudit(
+      auditContext(req, tenantId),
+      "studio_conversation.updated",
+      { type: "studio_conversation", id: conversation.id },
+      { status: conversation.status, title: conversation.title },
+    );
+    res.json({ conversation });
+  }),
+);
+router.post(
+  "/studio-conversations/:conversationId/messages",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, req.body?.tenantId);
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const message = await appendStudioMessage(
+      id(req, "conversationId"),
+      tenantId,
+      req.body,
+      actor(req),
+    );
+    await writeAudit(
+      auditContext(req, tenantId),
+      "studio_message.created",
+      { type: "studio_message", id: message.id },
+      { conversationId: id(req, "conversationId"), role: message.role },
+    );
+    res.status(201).json({ message });
+  }),
+);
+router.patch(
+  "/studio-conversations/:conversationId/messages/:messageId",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(
+      req,
+      req.body?.tenantId ?? optionalQuery(req, "tenantId"),
+    );
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const message = await updateStudioMessage(
+      id(req, "conversationId"),
+      id(req, "messageId"),
+      tenantId,
+      req.body,
+      actor(req),
+    );
+    await writeAudit(
+      auditContext(req, tenantId),
+      "studio_message.updated",
+      { type: "studio_message", id: message.id },
+      { conversationId: id(req, "conversationId"), status: message.status },
+    );
+    res.json({ message });
+  }),
+);
+router.get(
+  "/studio-conversations/:conversationId/messages/:messageId/revisions",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    res.json({
+      revisions: await listStudioMessageRevisions(
+        id(req, "conversationId"),
+        id(req, "messageId"),
+        tenantId,
+      ),
+    });
+  }),
+);
+router.put(
+  "/studio-conversations/:conversationId/labels",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, req.body?.tenantId);
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const labels = await replaceStudioConversationLabels(
+      id(req, "conversationId"),
+      tenantId,
+      req.body,
+      actor(req),
+    );
+    res.json({ labels });
+  }),
+);
+router.post(
+  "/studio-conversations/:conversationId/fork",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, req.body?.tenantId);
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const conversation = await forkStudioConversation(
+      id(req, "conversationId"),
+      tenantId,
+      req.body,
+      actor(req),
+    );
+    await writeAudit(
+      auditContext(req, tenantId),
+      "studio_conversation.forked",
+      { type: "studio_conversation", id: conversation.id },
+      { sourceConversationId: id(req, "conversationId") },
+    );
+    res.status(201).json({ conversation });
+  }),
+);
+router.get(
+  "/studio-conversations/:conversationId/events",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    res.json({
+      events: await listStudioConversationEvents(
+        id(req, "conversationId"),
+        tenantId,
+      ),
+    });
+  }),
+);
+router.put(
+  "/studio-conversations/:conversationId/messages/:messageId/feedback",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, req.body?.tenantId);
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const feedback = await recordStudioMessageFeedback(
+      id(req, "conversationId"),
+      id(req, "messageId"),
+      tenantId,
+      req.body,
+      actor(req),
+    );
+    res.json({ feedback });
+  }),
+);
+router.get(
+  "/symbol-conversations/:taskId",
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const conversation = await getSymbolConversation(
+      tenantId,
+      id(req, "taskId"),
+    );
+    if (!conversation) throw new NotFoundError("会话", id(req, "taskId"));
+    res.json({ conversation });
+  }),
+);
+router.patch(
+  "/symbol-conversations/:taskId",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const title = z.string().trim().min(1).max(96).parse(req.body?.title);
+    const conversation = await renameSymbolConversation(
+      tenantId,
+      id(req, "taskId"),
+      title,
+    );
+    if (!conversation) throw new NotFoundError("会话", id(req, "taskId"));
+    await writeAudit(
+      auditContext(req, tenantId),
+      "symbol_conversation.renamed",
+      { type: "symbol_conversation", id: conversation.taskId },
+      { title },
+    );
+    res.json({ conversation });
+  }),
+);
+router.post(
+  "/symbol-conversations/:taskId/archive",
+  requireTenantRole("developer"),
+  asyncHandler(async (req, res) => {
+    const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
+    if (!tenantId)
+      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。");
+    const archived = z
+      .boolean()
+      .optional()
+      .default(true)
+      .parse(req.body?.archived);
+    const conversation = await archiveSymbolConversation(
+      tenantId,
+      id(req, "taskId"),
+      archived,
+    );
+    if (!conversation) throw new NotFoundError("会话", id(req, "taskId"));
+    await writeAudit(
+      auditContext(req, tenantId),
+      archived
+        ? "symbol_conversation.archived"
+        : "symbol_conversation.restored",
+      { type: "symbol_conversation", id: conversation.taskId },
+    );
+    res.json({ conversation });
+  }),
+);
+router.get(
   "/tasks/:taskId",
   asyncHandler(async (req, res) => {
     const task = await getTaskDetail(Number(id(req, "taskId")));
@@ -850,7 +1226,11 @@ router.get(
   asyncHandler(async (req, res) => {
     const tenantId = await readableTenant(req, optionalQuery(req, "tenantId"));
     if (!tenantId) {
-      throw new AppError(400, "TENANT_CONTEXT_REQUIRED", "必须指定 tenantId。 ");
+      throw new AppError(
+        400,
+        "TENANT_CONTEXT_REQUIRED",
+        "必须指定 tenantId。 ",
+      );
     }
     const run = await getSymbolRunTrajectory(
       tenantId,

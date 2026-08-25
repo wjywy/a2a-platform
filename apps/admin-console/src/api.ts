@@ -158,10 +158,96 @@ export type AgentRunTrajectory = {
   events: Array<{
     sequence: number;
     node: string;
-    kind: "node_started" | "node_completed" | "tool" | "interrupt" | "error" | "final";
+    kind:
+      | "node_started"
+      | "node_completed"
+      | "tool"
+      | "interrupt"
+      | "error"
+      | "final";
     payload: Record<string, unknown>;
     created_at: string;
   }>;
+};
+export type SymbolConversationSummary = {
+  taskId: string;
+  contextId: string;
+  agentSlug: string;
+  state: "collecting" | "completed" | "failed" | "cancelled";
+  title: string;
+  preview: string;
+  updatedAt: string;
+  archivedAt?: string;
+};
+export type SymbolConversationDetail = SymbolConversationSummary & {
+  intent: Record<string, unknown>;
+  transcript: Array<{ role: "user" | "agent"; text: string; at: string }>;
+  result: Record<string, unknown> | null;
+};
+export type StudioConversation = {
+  id: string;
+  tenantId: string;
+  agentSlug: string;
+  title: string;
+  status: "active" | "archived" | "deleted";
+  lastTaskId?: string;
+  messageCount: number;
+  lastMessageAt?: string;
+  archivedAt?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  preview?: string;
+  labels?: StudioLabel[];
+};
+export type StudioLabel = {
+  id: string;
+  tenantId: string;
+  name: string;
+  color: "blue" | "cyan" | "purple" | "gold" | "green" | "red" | "gray";
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type StudioMessage = {
+  id: string;
+  conversationId: string;
+  sequence: number;
+  role: "user" | "assistant" | "system";
+  content: string;
+  status: "pending" | "streaming" | "completed" | "failed" | "cancelled";
+  taskId?: string;
+  errorCode?: string;
+  metadata: Record<string, unknown>;
+  clientRequestId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export type StudioConversationDetail = StudioConversation & {
+  messages: StudioMessage[];
+};
+export type StudioConversationEvent = {
+  id: number;
+  conversationId: string;
+  actorId: string;
+  kind: string;
+  messageId?: string;
+  detail: Record<string, unknown>;
+  createdAt: string;
+};
+export type StudioMessageFeedback = {
+  messageId: string;
+  rating: -1 | 1;
+  note?: string;
+  updatedAt: string;
+};
+export type StudioMessageRevision = {
+  id: string;
+  messageId: string;
+  revision: number;
+  content: string;
+  editedBy: string;
+  createdAt: string;
 };
 export type UsageRecord = {
   id: number;
@@ -461,17 +547,47 @@ async function request<T>(
         : "REQUEST_FAILED",
       typeof error === "string"
         ? error
-        : error && typeof error === "object" && "message" in error &&
+        : error &&
+            typeof error === "object" &&
+            "message" in error &&
             typeof error.message === "string"
           ? error.message
           : `请求失败 (${response.status})`,
-      error && typeof error === "object" && "details" in error &&
-        error.details && typeof error.details === "object"
+      error &&
+        typeof error === "object" &&
+        "details" in error &&
+        error.details &&
+        typeof error.details === "object"
         ? (error.details as Record<string, unknown>)
         : undefined,
     );
   }
   return body as T;
+}
+export async function downloadStudioConversation(
+  token: string,
+  tenantId: string,
+  conversationId: string,
+  format: "markdown" | "json" | "text" = "markdown",
+) {
+  const response = await fetch(
+    `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}/export${qs({ tenantId, format })}`,
+    { credentials: "include", headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const error = body?.error ?? body;
+    throw new ApiError(
+      response.status,
+      error?.code ?? "STUDIO_EXPORT_FAILED",
+      error?.message ?? "导出会话失败。",
+    );
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filename =
+    /filename="?([^";]+)"?/i.exec(disposition)?.[1] ??
+    `a2a-conversation.${format === "markdown" ? "md" : format}`;
+  return { filename, blob: await response.blob() };
 }
 const json = (value: unknown) => JSON.stringify(value);
 
@@ -508,7 +624,12 @@ export const platformApi = {
     request<void>("/api/auth/logout", token, { method: "POST", body: "{}" }),
   me: (token: string) =>
     request<{ user: PlatformUser; tenants: Tenant[] }>("/api/auth/me", token),
-  agentRun: (token: string, tenantId: string, agentSlug: string, taskId: string) =>
+  agentRun: (
+    token: string,
+    tenantId: string,
+    agentSlug: string,
+    taskId: string,
+  ) =>
     request<{ run: AgentRunTrajectory | null }>(
       `/api/admin/agent-runs/${encodeURIComponent(agentSlug)}/${encodeURIComponent(taskId)}?tenantId=${encodeURIComponent(tenantId)}`,
       token,
@@ -795,6 +916,201 @@ export const platformApi = {
       (x) => x.task,
     ),
   taskEventsUrl: (id: number) => `/api/admin/tasks/${id}/events.json`,
+  symbolConversations: (
+    token: string,
+    tenantId: string,
+    agentSlug: string,
+    includeArchived = false,
+  ) =>
+    request<{ conversations: SymbolConversationSummary[] }>(
+      `/api/admin/symbol-conversations${qs({ tenantId, agentSlug, includeArchived })}`,
+      token,
+    ).then((x) => x.conversations),
+  symbolConversation: (token: string, tenantId: string, taskId: string) =>
+    request<{ conversation: SymbolConversationDetail }>(
+      `/api/admin/symbol-conversations/${encodeURIComponent(taskId)}${qs({ tenantId })}`,
+      token,
+    ).then((x) => x.conversation),
+  renameSymbolConversation: (
+    token: string,
+    tenantId: string,
+    taskId: string,
+    title: string,
+  ) =>
+    request<{ conversation: SymbolConversationSummary }>(
+      `/api/admin/symbol-conversations/${encodeURIComponent(taskId)}${qs({ tenantId })}`,
+      token,
+      { method: "PATCH", body: json({ title }) },
+    ).then((x) => x.conversation),
+  archiveSymbolConversation: (
+    token: string,
+    tenantId: string,
+    taskId: string,
+    archived = true,
+  ) =>
+    request<{ conversation: SymbolConversationSummary }>(
+      `/api/admin/symbol-conversations/${encodeURIComponent(taskId)}/archive${qs({ tenantId })}`,
+      token,
+      { method: "POST", body: json({ archived }) },
+    ).then((x) => x.conversation),
+  studioConversations: (
+    token: string,
+    input: {
+      tenantId: string;
+      agentSlug?: string;
+      status?: "active" | "archived" | "deleted";
+      search?: string;
+      labelId?: string;
+      page?: number;
+      pageSize?: number;
+    },
+  ) =>
+    request<Page<StudioConversation>>(
+      `/api/admin/studio-conversations${qs(input)}`,
+      token,
+    ),
+  createStudioConversation: (
+    token: string,
+    input: { tenantId: string; agentSlug: string; title?: string },
+  ) =>
+    request<{ conversation: StudioConversation }>(
+      "/api/admin/studio-conversations",
+      token,
+      { method: "POST", body: json(input) },
+    ).then((x) => x.conversation),
+  studioLabels: (token: string, tenantId: string) =>
+    request<{ labels: StudioLabel[] }>(
+      `/api/admin/studio-labels${qs({ tenantId })}`,
+      token,
+    ).then((x) => x.labels),
+  createStudioLabel: (
+    token: string,
+    input: { tenantId: string; name: string; color?: StudioLabel["color"] },
+  ) =>
+    request<{ label: StudioLabel }>("/api/admin/studio-labels", token, {
+      method: "POST",
+      body: json(input),
+    }).then((x) => x.label),
+  deleteStudioLabel: (token: string, tenantId: string, labelId: string) =>
+    request<void>(
+      `/api/admin/studio-labels/${encodeURIComponent(labelId)}${qs({ tenantId })}`,
+      token,
+      { method: "DELETE" },
+    ),
+  studioConversation: (
+    token: string,
+    tenantId: string,
+    conversationId: string,
+  ) =>
+    request<{ conversation: StudioConversationDetail }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}${qs({ tenantId })}`,
+      token,
+    ).then((x) => x.conversation),
+  updateStudioConversation: (
+    token: string,
+    conversationId: string,
+    input: {
+      tenantId: string;
+      title?: string;
+      status?: "active" | "archived" | "deleted";
+    },
+  ) =>
+    request<{ conversation: StudioConversation }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}`,
+      token,
+      { method: "PATCH", body: json(input) },
+    ).then((x) => x.conversation),
+  appendStudioMessage: (
+    token: string,
+    conversationId: string,
+    input: {
+      tenantId: string;
+      role: "user" | "assistant" | "system";
+      content: string;
+      status?: StudioMessage["status"];
+      taskId?: string;
+      errorCode?: string;
+      metadata?: Record<string, unknown>;
+      clientRequestId?: string;
+    },
+  ) =>
+    request<{ message: StudioMessage }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}/messages`,
+      token,
+      { method: "POST", body: json(input) },
+    ).then((x) => x.message),
+  updateStudioMessage: (
+    token: string,
+    conversationId: string,
+    messageId: string,
+    input: {
+      tenantId: string;
+      content?: string;
+      status?: StudioMessage["status"];
+      taskId?: string | null;
+      errorCode?: string | null;
+      metadata?: Record<string, unknown>;
+    },
+  ) =>
+    request<{ message: StudioMessage }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
+      token,
+      { method: "PATCH", body: json(input) },
+    ).then((x) => x.message),
+  forkStudioConversation: (
+    token: string,
+    conversationId: string,
+    input: {
+      tenantId: string;
+      title?: string;
+      throughSequence?: number;
+    },
+  ) =>
+    request<{ conversation: StudioConversationDetail }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}/fork`,
+      token,
+      { method: "POST", body: json(input) },
+    ).then((x) => x.conversation),
+  studioConversationEvents: (
+    token: string,
+    tenantId: string,
+    conversationId: string,
+  ) =>
+    request<{ events: StudioConversationEvent[] }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}/events${qs({ tenantId })}`,
+      token,
+    ).then((x) => x.events),
+  studioMessageFeedback: (
+    token: string,
+    conversationId: string,
+    messageId: string,
+    input: { tenantId: string; rating: -1 | 1; note?: string },
+  ) =>
+    request<{ feedback: StudioMessageFeedback }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/feedback`,
+      token,
+      { method: "PUT", body: json(input) },
+    ).then((x) => x.feedback),
+  studioMessageRevisions: (
+    token: string,
+    tenantId: string,
+    conversationId: string,
+    messageId: string,
+  ) =>
+    request<{ revisions: StudioMessageRevision[] }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/revisions${qs({ tenantId })}`,
+      token,
+    ).then((x) => x.revisions),
+  replaceStudioConversationLabels: (
+    token: string,
+    conversationId: string,
+    input: { tenantId: string; labelIds: string[] },
+  ) =>
+    request<{ labels: StudioLabel[] }>(
+      `/api/admin/studio-conversations/${encodeURIComponent(conversationId)}/labels`,
+      token,
+      { method: "PUT", body: json(input) },
+    ).then((x) => x.labels),
   usage: (token: string, input: Record<string, QueryValue> = {}) =>
     request<Page<UsageRecord>>(`/api/admin/usage${qs(input)}`, token),
   usageSummary: (token: string, input: Record<string, QueryValue> = {}) =>
@@ -1077,7 +1393,10 @@ export async function* streamAgent(input: {
           role: "ROLE_USER",
           parts: [
             {
-              content: { $case: "text", value: input.question },
+              // This is the A2A REST JSON representation. The SDK's
+              // in-memory `$case` shape is deliberately not used here: it
+              // serializes to an empty part on the wire.
+              text: input.question,
               mediaType: "text/plain",
               filename: "",
               metadata: undefined,

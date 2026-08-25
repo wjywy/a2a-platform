@@ -13,4 +13,7 @@ services:
   worker:
     environment:
       NODE_ENV: production
+      # The worker has its own process environment; it must use the same
+      # public origin as API when checking the public built-in Agent Cards.
+      PLATFORM_ORIGIN: https://a2a-platform.com
       ALLOW_PRIVATE_OUTBOUND_TARGETS: "false"

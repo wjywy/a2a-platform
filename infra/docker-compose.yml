@@ -97,6 +97,10 @@ services:
     environment:
       POSTGRES_URL: postgres://platform:platform@postgres:5432/a2a_platform
       REDIS_URL: redis://redis:6379
+      # Health probes run inside this container. Keep the public card origin
+      # stable while routing bundled Symbol probes to the API service network.
+      PLATFORM_ORIGIN: http://localhost:8080
+      SYMBOL_INTERNAL_ORIGIN: http://api:3000
       HEALTH_CHECK_INTERVAL_MS: 30000
       ALLOW_PRIVATE_OUTBOUND_TARGETS: "true"
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-local-development-credential-key-change-before-deploy}

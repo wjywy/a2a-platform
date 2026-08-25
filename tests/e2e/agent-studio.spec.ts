@@ -1,0 +1,214 @@
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
+
+const adminHeaders = {
+  Authorization: "Bearer dev-admin-token",
+  "Content-Type": "application/json",
+};
+const apiBase = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:8080";
+
+type Tenant = { id: string; displayName: string };
+type Conversation = { id: string; title: string; agentSlug: string };
+type Message = { id: string; sequence: number; content: string };
+
+function suffix() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function adminJson<T>(
+  request: APIRequestContext,
+  path: string,
+  init: {
+    method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+    data?: unknown;
+  } = {},
+): Promise<T> {
+  const response = await request.fetch(`${apiBase}${path}`, {
+    method: init.method ?? "GET",
+    headers: adminHeaders,
+    data: init.data,
+  });
+  expect(response.ok(), `${init.method ?? "GET"} ${path}`).toBeTruthy();
+  if (response.status() === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+async function defaultTenant(request: APIRequestContext) {
+  const value = await adminJson<{ items: Tenant[] }>(
+    request,
+    "/api/admin/tenants?page=1&pageSize=100",
+  );
+  expect(value.items.length).toBeGreaterThan(0);
+  return value.items[0];
+}
+
+async function createConversation(
+  request: APIRequestContext,
+  tenantId: string,
+  title: string,
+): Promise<Conversation> {
+  const value = await adminJson<{ conversation: Conversation }>(
+    request,
+    "/api/admin/studio-conversations",
+    {
+      method: "POST",
+      data: { tenantId, agentSlug: "symbol-market", title },
+    },
+  );
+  return value.conversation;
+}
+
+async function appendMessage(
+  request: APIRequestContext,
+  conversationId: string,
+  tenantId: string,
+  input: {
+    role: "user" | "assistant";
+    content: string;
+    clientRequestId?: string;
+  },
+): Promise<Message> {
+  const value = await adminJson<{ message: Message }>(
+    request,
+    `/api/admin/studio-conversations/${conversationId}/messages`,
+    { method: "POST", data: { tenantId, status: "completed", ...input } },
+  );
+  return value.message;
+}
+
+async function installAdminSession(page: Page) {
+  await page.addInitScript(() =>
+    localStorage.setItem("a2a-admin-token", "dev-admin-token"),
+  );
+}
+
+test.beforeEach(async ({ page }) => installAdminSession(page));
+
+test("Agent Studio renders a compact conversation workspace without horizontal overflow", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/debug");
+  await expect(page.getByText("Agent Studio", { exact: true })).toBeVisible();
+  await expect(page.getByText("会话", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "新建对话" }).first(),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /发送/ })).toBeVisible();
+
+  const dimensions = await page.evaluate(() => ({
+    width: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width + 1);
+
+  if (testInfo.project.name.includes("mobile")) {
+    await expect(page.getByPlaceholder("搜索会话")).toBeVisible();
+  }
+});
+
+test("conversation lifecycle endpoints retain history, idempotency, labels and export", async ({
+  request,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name.includes("mobile"),
+    "server contract runs once",
+  );
+  const tenant = await defaultTenant(request);
+  const title = `Playwright 会话 ${suffix()}`;
+  const conversation = await createConversation(request, tenant.id, title);
+  const requestId = crypto.randomUUID();
+  const first = await appendMessage(request, conversation.id, tenant.id, {
+    role: "user",
+    content: "请分析今天的市场风险",
+    clientRequestId: requestId,
+  });
+  const duplicate = await appendMessage(request, conversation.id, tenant.id, {
+    role: "user",
+    content: "请分析今天的市场风险",
+    clientRequestId: requestId,
+  });
+  expect(duplicate.id).toBe(first.id);
+  const assistant = await appendMessage(request, conversation.id, tenant.id, {
+    role: "assistant",
+    content: "我会先区分价格、新闻和事件风险。",
+  });
+  expect(assistant.sequence).toBe(2);
+
+  const labelName = `待复核-${suffix()}`;
+  const label = await adminJson<{ label: { id: string; name: string } }>(
+    request,
+    "/api/admin/studio-labels",
+    {
+      method: "POST",
+      data: { tenantId: tenant.id, name: labelName, color: "gold" },
+    },
+  );
+  const assigned = await adminJson<{ labels: Array<{ id: string }> }>(
+    request,
+    `/api/admin/studio-conversations/${conversation.id}/labels`,
+    {
+      method: "PUT",
+      data: { tenantId: tenant.id, labelIds: [label.label.id] },
+    },
+  );
+  expect(assigned.labels.map((item) => item.id)).toContain(label.label.id);
+
+  const filtered = await adminJson<{ items: Conversation[] }>(
+    request,
+    `/api/admin/studio-conversations?tenantId=${tenant.id}&agentSlug=symbol-market&labelId=${label.label.id}`,
+  );
+  expect(filtered.items.map((item) => item.id)).toContain(conversation.id);
+
+  const exported = await request.get(
+    `${apiBase}/api/admin/studio-conversations/${conversation.id}/export?tenantId=${tenant.id}&format=markdown`,
+    { headers: adminHeaders },
+  );
+  expect(exported.ok()).toBeTruthy();
+  expect(await exported.text()).toContain(title);
+  expect(exported.headers()["content-disposition"]).toContain("attachment");
+});
+
+test("restoring a saved conversation keeps the user-visible transcript and exposes management controls", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name.includes("mobile"),
+    "workspace selection runs once",
+  );
+  const tenant = await defaultTenant(request);
+  const title = `恢复会话 ${suffix()}`;
+  const conversation = await createConversation(request, tenant.id, title);
+  await appendMessage(request, conversation.id, tenant.id, {
+    role: "user",
+    content: "我想从自然语言开始研究一个标的",
+  });
+  await appendMessage(request, conversation.id, tenant.id, {
+    role: "assistant",
+    content: "请告诉我标的、时间范围或关注的风险。",
+  });
+
+  await page.goto("/debug");
+  const studio = page.locator('[class*="studioSidebar"]');
+  await studio.getByRole("combobox").first().click();
+  await page.getByText(tenant.displayName, { exact: true }).last().click();
+  await studio.getByRole("combobox").nth(1).click();
+  await page.getByText("Symbol 市场行情 Agent", { exact: true }).last().click();
+  const search = page.getByPlaceholder("搜索会话");
+  await search.fill(title);
+  await expect(page.getByRole("button", { name: title })).toBeVisible();
+  await page.getByRole("button", { name: title }).click();
+  const transcript = page.getByLabel("Agent 对话");
+  await expect(
+    transcript.getByText("我想从自然语言开始研究一个标的"),
+  ).toBeVisible();
+  await expect(
+    transcript.getByText("请告诉我标的、时间范围或关注的风险。"),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "导出会话" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /标签/ })).toBeVisible();
+});
