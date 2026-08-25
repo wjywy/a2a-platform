@@ -63,6 +63,9 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       SMTP_FROM: ${SMTP_FROM:-a2a-platform@localhost}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Tenant-scoped key used only by the authenticated Agent Studio proxy.
+      # It is intentionally not exposed to the console container.
+      STUDIO_API_KEY: ${STUDIO_API_KEY:-}
       SYMBOL_INTERNAL_TOKEN: ${SYMBOL_INTERNAL_TOKEN:-}
       SYMBOL_INTERNAL_ORIGIN: http://api:3000
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}

@@ -1,7 +1,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import request from "supertest";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "./app.js";
 import { pool, query } from "./db.js";
 import { hashApiKey } from "./api-key-service.js";
@@ -1357,6 +1357,65 @@ describe("generic Agent Studio conversation persistence", () => {
     expect(json).toContain('"schemaVersion": 1');
     expect(json).not.toContain("sensitive-internal-actor");
     expect(json).not.toContain("must-not-export");
+  });
+});
+
+describe("authenticated Agent Studio proxy", () => {
+  it("keeps the platform key on the server while forwarding a tenant-scoped SSE call", async () => {
+    const tenant = await createTenant(`studio-proxy-${unique}`);
+    const key = await createKey(tenant.id);
+    const agentSlug = `studio-proxy-agent-${unique}`;
+    await insertTestAgent(tenant.id, agentSlug, "private");
+    const originalKey = config.studioApiKey;
+    config.studioApiKey = key.secret;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          "event: message\\ndata: {\\\"task\\\":{\\\"id\\\":\\\"studio-task\\\"}}\\n\\n",
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+    try {
+      const response = await request(createApp())
+        .post(`/api/admin/studio/agents/${agentSlug}/a2a/rest/message:stream`)
+        .set("Authorization", admin)
+        .send({
+          tenantId: tenant.id,
+          request: { message: { role: "ROLE_USER", parts: [{ text: "hello" }] } },
+        });
+      expect(response.status).toBe(200);
+      expect(response.text).toContain("studio-task");
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(URL),
+        expect.objectContaining({
+          headers: expect.objectContaining({ "x-api-key": key.secret }),
+        }),
+      );
+    } finally {
+      config.studioApiKey = originalKey;
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("rejects a Studio request when the server credential belongs to another tenant", async () => {
+    const tenant = await createTenant(`studio-proxy-owner-${unique}`);
+    const other = await createTenant(`studio-proxy-other-${unique}`);
+    const key = await createKey(other.id);
+    const agentSlug = `studio-proxy-denied-${unique}`;
+    await insertTestAgent(tenant.id, agentSlug, "private");
+    const originalKey = config.studioApiKey;
+    config.studioApiKey = key.secret;
+    try {
+      const response = await request(createApp())
+        .post(`/api/admin/studio/agents/${agentSlug}/a2a/rest/message:stream`)
+        .set("Authorization", admin)
+        .send({ tenantId: tenant.id, request: {} });
+      expect(response.status).toBe(403);
+      expect(response.body.error.code).toBe("STUDIO_CREDENTIAL_TENANT_MISMATCH");
+    } finally {
+      config.studioApiKey = originalKey;
+    }
   });
 });
 

@@ -1,4 +1,6 @@
 import { Router } from "express";
+import crypto from "node:crypto";
+import { Readable } from "node:stream";
 import { z } from "zod";
 import {
   requireAuthentication,
@@ -37,7 +39,9 @@ import {
   listApiKeys,
   revokeApiKey,
   updateApiKey,
+  authenticateApiKey,
 } from "./api-key-service.js";
+import { config } from "./config.js";
 import {
   createWebhook,
   deleteWebhook,
@@ -203,6 +207,31 @@ async function agentPermission(
   return agent;
 }
 
+/** Permission check for an authenticated Studio session calling an A2A agent. */
+async function studioAgentPermission(
+  req: Parameters<typeof auditContext>[0],
+  tenantId: string,
+  slug: string,
+) {
+  const agent = await getAgentBySlug(slug);
+  if (!agent) throw new NotFoundError("Agent", slug);
+  if (req.principal?.platformRole !== "platform_admin") {
+    const role = await tenantRoleForUser(tenantId, req.principal!.id);
+    assertTenantAccess(req.principal!, role, "developer");
+  }
+  if (
+    agent.tenantId !== tenantId &&
+    agent.visibility !== "public" &&
+    !agent.allowedTenantIds.includes(tenantId)
+  )
+    throw new AppError(
+      403,
+      "AGENT_TENANT_DENIED",
+      "该 Agent 未授权给当前租户。",
+    );
+  return agent;
+}
+
 router.get(
   "/session",
   asyncHandler(async (req, res) => {
@@ -217,6 +246,67 @@ router.get(
   "/me/tenants",
   asyncHandler(async (req, res) => {
     res.json({ tenants: await listTenantsForUser(req.principal!.id) });
+  }),
+);
+
+/**
+ * Authenticated Studio-to-gateway bridge.  This is deliberately separate
+ * from the public A2A gateway: browser clients authenticate with their login
+ * token, while the tenant API key stays in the API process environment.
+ */
+router.post(
+  "/studio/agents/:slug/a2a/rest/message:stream",
+  asyncHandler(async (req, res) => {
+    const tenantId = z.string().uuid().parse(req.body?.tenantId);
+    const agent = await studioAgentPermission(req, tenantId, id(req, "slug"));
+    if (!config.studioApiKey)
+      throw new AppError(
+        503,
+        "STUDIO_CREDENTIAL_NOT_CONFIGURED",
+        "在线调试服务尚未配置服务端调用凭据。",
+      );
+    const credential = await authenticateApiKey(config.studioApiKey);
+    if (credential.tenantId !== tenantId)
+      throw new AppError(
+        403,
+        "STUDIO_CREDENTIAL_TENANT_MISMATCH",
+        "当前租户与在线调试服务凭据不匹配。",
+      );
+    const gatewayUrl = new URL(
+      `/agents/${encodeURIComponent(agent.slug)}/a2a/rest/message:stream`,
+      `${config.symbolInternalOrigin}/`,
+    );
+    const response = await fetch(gatewayUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": config.studioApiKey,
+        "x-request-id": req.requestId ?? crypto.randomUUID(),
+      },
+      body: JSON.stringify(req.body?.request ?? {}),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => undefined);
+      const error = payload as { error?: { code?: string; message?: string } } | undefined;
+      throw new AppError(
+        response.status,
+        error?.error?.code ?? "STUDIO_GATEWAY_FAILED",
+        error?.error?.message ?? `Agent 调用失败 (${response.status})。`,
+      );
+    }
+    if (!response.body)
+      throw new AppError(502, "STUDIO_STREAM_MISSING", "Agent 未返回流式响应。");
+    res.status(response.status);
+    res.setHeader("content-type", response.headers.get("content-type") ?? "text/event-stream; charset=utf-8");
+    res.setHeader("cache-control", "no-cache, no-transform");
+    res.setHeader("x-accel-buffering", "no");
+    res.flushHeaders();
+    Readable.fromWeb(response.body as never).pipe(res);
+    await writeAudit(auditContext(req, tenantId), "studio.agent_invoked", {
+      type: "agent",
+      id: agent.id,
+      agentId: agent.id,
+    });
   }),
 );
 router.get(

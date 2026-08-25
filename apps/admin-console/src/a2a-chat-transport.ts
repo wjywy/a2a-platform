@@ -1,9 +1,10 @@
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
-import { streamAgent } from "./api";
+import { streamStudioAgent } from "./api";
 
 type Config = () => {
   slug: string;
-  apiKey: string;
+  token: string;
+  tenantId: string;
   taskId?: string;
   onEvent?: (event: unknown) => void;
   onStatus?: (
@@ -61,9 +62,9 @@ export class A2AChatTransport implements ChatTransport<UIMessage> {
   async sendMessages(
     options: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0],
   ) {
-    const { slug, apiKey, taskId, onEvent, onStatus } = this.config();
+    const { slug, token, tenantId, taskId, onEvent, onStatus } = this.config();
     const prompt = promptForMessages(options.messages, taskId);
-    if (!slug || !apiKey) throw new Error("请先选择 Agent 并填写 API Key。");
+    if (!slug || !token || !tenantId) throw new Error("请先登录并选择租户与 Agent。");
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
         const id = crypto.randomUUID();
@@ -71,9 +72,10 @@ export class A2AChatTransport implements ChatTransport<UIMessage> {
         onStatus?.("connecting");
         try {
           let emitted = "";
-          for await (const event of streamAgent({
+          for await (const event of streamStudioAgent({
             slug,
-            apiKey,
+            token,
+            tenantId,
             question: prompt,
             continueTaskId: taskId,
             signal: options.abortSignal,

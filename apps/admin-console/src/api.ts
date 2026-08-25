@@ -1458,6 +1458,61 @@ export async function* streamAgent(input: {
   }
 }
 
+export async function* streamStudioAgent(input: {
+  token: string;
+  tenantId: string;
+  slug: string;
+  question: string;
+  signal?: AbortSignal;
+  continueTaskId?: string;
+}): AsyncGenerator<SseEnvelope> {
+  const response = await fetch(
+    `/api/admin/studio/agents/${encodeURIComponent(input.slug)}/a2a/rest/message:stream`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "Content-Type": "application/json" },
+      body: json({
+        tenantId: input.tenantId,
+        request: {
+          message: {
+            messageId: crypto.randomUUID(), role: "ROLE_USER",
+            parts: [{ text: input.question, mediaType: "text/plain", filename: "", metadata: undefined }],
+            taskId: input.continueTaskId ?? "", contextId: "", extensions: [], metadata: {}, referenceTaskIds: [],
+          }, configuration: undefined, metadata: {},
+        },
+      }),
+      signal: input.signal,
+    },
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new ApiError(response.status, payload.error?.code ?? "STUDIO_STREAM_FAILED", payload.error?.message ?? `调用失败 (${response.status})`);
+  }
+  if (!response.body) throw new ApiError(502, "STUDIO_STREAM_BODY_MISSING", "在线调试未返回流式响应体。");
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += value;
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() ?? "";
+    for (const block of blocks) {
+      let event: string | undefined;
+      const data: string[] = [];
+      for (const line of block.split(/\r?\n/)) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+      }
+      if (!data.length) continue;
+      const raw = data.join("\n");
+      let parsed: unknown = raw;
+      try { parsed = JSON.parse(raw); } catch { /* preserve text event */ }
+      yield { event, data: parsed, raw };
+    }
+  }
+}
+
 export async function cancelRemoteTask(
   slug: string,
   taskId: string,

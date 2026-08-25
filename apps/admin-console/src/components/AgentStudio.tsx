@@ -26,7 +26,6 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   InboxOutlined,
-  KeyOutlined,
   LeftOutlined,
   LoadingOutlined,
   MessageOutlined,
@@ -42,7 +41,6 @@ import {
 import { useApp } from "../AppContext";
 import {
   platformApi,
-  cancelRemoteTask,
   downloadStudioConversation,
   type AgentRunTrajectory,
   type StudioConversation,
@@ -58,7 +56,6 @@ import { useStudioDraft } from "./studio/useStudioDraft";
 import { useTranscriptScroll } from "./studio/useTranscriptScroll";
 import { useStudioPersistenceQueue } from "./studio/useStudioPersistenceQueue";
 import { A2AChatTransport } from "../a2a-chat-transport";
-import { ApiKeysPanel } from "../pages/ApiKeysPanel";
 import styles from "../App.module.css";
 
 function findTaskId(value: unknown, insideTask = false): string | undefined {
@@ -133,8 +130,6 @@ export function AgentStudio() {
   const { token, agents, tenants, selectedTenantId, setSelectedTenantId } =
     useApp();
   const tenantId = selectedTenantId || tenants[0]?.id || "";
-  const [keyId, setKeyId] = useState("");
-  const [secret, setSecret] = useState("");
   const [slug, setSlug] = useState("");
   const [taskId, setTaskId] = useState("");
   const [conversationId, setConversationId] = useState("");
@@ -143,7 +138,6 @@ export function AgentStudio() {
   );
   const [trajectory, setTrajectory] = useState<AgentRunTrajectory | null>();
   const [settingsOpen, setSettingsOpen] = useState(true);
-  const [keyManagerOpen, setKeyManagerOpen] = useState(false);
   const [leftWidth, setLeftWidth] = useState(288);
   const [rightWidth, setRightWidth] = useState(280);
   const [dragging, setDragging] = useState<"left" | "right" | null>(null);
@@ -176,18 +170,14 @@ export function AgentStudio() {
   >(undefined);
   const config = useRef({
     slug: "",
-    apiKey: "",
+    token: "",
+    tenantId: "",
     taskId: "",
     onEvent: undefined as undefined | ((event: unknown) => void),
     onStatus: undefined as
       | undefined
       | ((status: "connecting" | "receiving" | "completed" | "error") => void),
   });
-  const keys = useAsync(
-    () =>
-      tenantId ? platformApi.keys(token, tenantId, false) : Promise.resolve([]),
-    [token, tenantId],
-  );
   const deliverQueuedMessage = useCallback(
     async (operation: {
       conversationId: string;
@@ -253,7 +243,8 @@ export function AgentStudio() {
   );
   config.current = {
     slug,
-    apiKey: secret,
+    token,
+    tenantId,
     taskId,
     onEvent: (event) => {
       const next = findTaskId(event);
@@ -282,7 +273,6 @@ export function AgentStudio() {
     [agents, tenantId],
   );
   const selected = availableAgents.find((agent) => agent.slug === slug);
-  const selectedTenant = tenants.find((tenant) => tenant.id === tenantId);
   const activeConversation = conversations.data?.items.find(
     (item) => item.id === conversationId,
   );
@@ -301,14 +291,6 @@ export function AgentStudio() {
     () => setHistoryPage(1),
     [slug, tenantId, showArchived, conversationSearch, labelFilter],
   );
-  useEffect(() => {
-    if (!keyId && keys.data?.[0]) setKeyId(keys.data[0].id);
-  }, [keys.data, keyId]);
-  useEffect(() => {
-    setSecret(
-      keyId ? (sessionStorage.getItem(`a2a-secret:${keyId}`) ?? "") : "",
-    );
-  }, [keyId]);
   useEffect(() => {
     setTaskId("");
     setConversationId("");
@@ -535,7 +517,7 @@ export function AgentStudio() {
   };
   const send = async (overrideMessage?: string) => {
     const message = (overrideMessage ?? prompt).trim();
-    if (!message || isBusy || !slug || !secret || !tenantId) return;
+    if (!message || isBusy || !slug || !token || !tenantId) return;
     generationCancelled.current = false;
     draft.clear();
     setConversationError("");
@@ -583,17 +565,8 @@ export function AgentStudio() {
     }
     chat.stop();
     setStreamPhase("idle");
-    if (taskId && secret && slug) {
-      try {
-        await cancelRemoteTask(slug, taskId, secret);
-      } catch (error) {
-        setConversationError(
-          error instanceof Error
-            ? `本地流已停止，但远端任务取消失败：${error.message}`
-            : "本地流已停止，但远端任务取消失败。",
-        );
-      }
-    }
+    // The stream is aborted client-side. Cancellation remains available from
+    // the task center, where it follows the same authenticated proxy policy.
     if (conversationId && tenantId) {
       try {
         const message = await platformApi.appendStudioMessage(
@@ -880,7 +853,7 @@ export function AgentStudio() {
             <Tag color="blue">A2A + LangGraph</Tag>
           </div>
           <Typography.Text type="secondary">
-            使用租户 API Key 发起有任务轨迹、可恢复上下文的真实 A2A 调用。
+            使用登录身份安全代理真实 A2A 调用；调用凭据不会进入浏览器。
           </Typography.Text>
           <label>
             租户
@@ -920,49 +893,15 @@ export function AgentStudio() {
             icon={<SettingOutlined />}
             onClick={() => setSettingsOpen((value) => !value)}
           >
-            调用凭据
+            安全调用
           </Button>
           {settingsOpen && (
             <div className={styles.studioSettings}>
               <div className={styles.studioSettingsHeading}>
-                <b>已保存的 Key</b>
-                <Button
-                  size="small"
-                  type="link"
-                  icon={<KeyOutlined />}
-                  onClick={() => setKeyManagerOpen(true)}
-                >
-                  新建 Key
-                </Button>
+                <b>服务端安全代理</b>
               </div>
-              <Select
-                aria-label="已保存的 Key"
-                className={styles.studioKeySelect}
-                value={keyId || undefined}
-                placeholder="选择 API Key"
-                options={keys.data?.map((key) => ({
-                  value: key.id,
-                  label: `${key.name} · ${key.prefix}`,
-                }))}
-                onChange={setKeyId}
-              />
-              <label>
-                API Key 明文
-                <Input.Password
-                  value={secret}
-                  placeholder="a2a_live_…"
-                  onChange={(event) => {
-                    setSecret(event.target.value);
-                    if (keyId)
-                      sessionStorage.setItem(
-                        `a2a-secret:${keyId}`,
-                        event.target.value,
-                      );
-                  }}
-                />
-              </label>
               <Typography.Text type="secondary">
-                仅保存在本浏览器会话内，不会发送到管理 API。
+                你的登录身份会校验租户与 Agent 权限；平台调用凭据仅保存在服务器环境变量中。
               </Typography.Text>
             </div>
           )}
@@ -1385,14 +1324,14 @@ export function AgentStudio() {
                     }
                   }}
                   placeholder={
-                    !secret
-                      ? "先在左侧填写 API Key"
+                    !token
+                      ? "请先登录后使用在线调试"
                       : isBusy
                         ? "Agent 正在回应，可停止当前生成"
                         : "给 Agent 发送消息…"
                   }
                   autoSize={{ minRows: 1, maxRows: 7 }}
-                  disabled={!secret || !slug || isBusy}
+                  disabled={!token || !slug || isBusy}
                 />
                 {isBusy ? (
                   <Button
@@ -1408,7 +1347,7 @@ export function AgentStudio() {
                     type="primary"
                     htmlType="submit"
                     icon={<SendOutlined />}
-                    disabled={!prompt.trim() || !secret || !slug}
+                    disabled={!prompt.trim() || !token || !slug}
                   >
                     发送
                   </Button>
@@ -1484,21 +1423,6 @@ export function AgentStudio() {
           ) : null}
         </aside>
       </div>
-      {keyManagerOpen && selectedTenant && (
-        <ApiKeysPanel
-          tenant={selectedTenant}
-          close={() => {
-            setKeyManagerOpen(false);
-            void keys.refresh();
-          }}
-          onKeyCreated={(key) => {
-            if (!key.secret) return;
-            sessionStorage.setItem(`a2a-secret:${key.id}`, key.secret);
-            setKeyId(key.id);
-            setSecret(key.secret);
-          }}
-        />
-      )}
       <Drawer
         title="消息编辑记录"
         placement="right"

@@ -51,6 +51,12 @@ export const config = {
   maxA2AEventBytes: Number(process.env.MAX_A2A_EVENT_BYTES ?? 1_048_576),
   maxA2AStreamEvents: Number(process.env.MAX_A2A_STREAM_EVENTS ?? 10_000),
   maxA2ACallDurationMs: Number(process.env.MAX_A2A_CALL_DURATION_MS ?? 300_000),
+  /**
+   * A tenant-scoped platform key held only by the API process.  Agent Studio
+   * uses it through an authenticated server-side proxy, never through the
+   * browser bundle.
+   */
+  studioApiKey: process.env.STUDIO_API_KEY ?? "",
   /** Internal credential used only when the platform calls its bundled agents. */
   symbolInternalToken: process.env.SYMBOL_INTERNAL_TOKEN ?? "",
   // In Docker development this is http://api:3000, avoiding a host-network hairpin.
