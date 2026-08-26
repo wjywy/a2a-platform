@@ -387,7 +387,7 @@ export default function App() {
     ) : effectivePage === "agents" ? (
       <AgentsPage openRegister={register.show} />
     ) : effectivePage === "debug" ? (
-      <DebugPage />
+      <DebugPage onExitStudio={() => navigate("overview")} />
     ) : effectivePage === "tasks" ? (
       <TasksPage />
     ) : effectivePage === "usage" ? (

@@ -20,6 +20,14 @@ const routes = [
 
 async function waitForConsole(page: Page) {
   await page.waitForLoadState("domcontentloaded");
+  if (new URL(page.url()).pathname === "/debug") {
+    await page.getByRole("button", { name: "返回控制台" }).waitFor({
+      state: "visible",
+      timeout: 15_000,
+    });
+    await page.waitForTimeout(500);
+    return;
+  }
   await page
     .locator("main h1")
     .first()

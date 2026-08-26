@@ -56,6 +56,7 @@ import { useStudioDraft } from "./studio/useStudioDraft";
 import { useTranscriptScroll } from "./studio/useTranscriptScroll";
 import { useStudioPersistenceQueue } from "./studio/useStudioPersistenceQueue";
 import { A2AChatTransport } from "../a2a-chat-transport";
+import { useToast } from "../ui";
 import styles from "../App.module.css";
 
 function findTaskId(value: unknown, insideTask = false): string | undefined {
@@ -126,10 +127,28 @@ function timeLabel(value: string) {
     : date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
-export function AgentStudio() {
+export function AgentStudio({
+  onExitStudio,
+}: {
+  /** Return to the standard operations console without relying on browser history. */
+  onExitStudio?: () => void;
+}) {
   const { token, agents, tenants, selectedTenantId, setSelectedTenantId } =
     useApp();
-  const tenantId = selectedTenantId || tenants[0]?.id || "";
+  const toast = useToast();
+  const activeTenants = useMemo(
+    () => tenants.filter((tenant) => tenant.status === "active"),
+    [tenants],
+  );
+  const preferredTenant =
+    activeTenants.find((tenant) => tenant.slug === "default") ??
+    activeTenants[0];
+  const tenantId =
+    (selectedTenantId &&
+      activeTenants.some((tenant) => tenant.id === selectedTenantId) &&
+      selectedTenantId) ||
+    preferredTenant?.id ||
+    "";
   const [slug, setSlug] = useState("");
   const [taskId, setTaskId] = useState("");
   const [conversationId, setConversationId] = useState("");
@@ -160,6 +179,8 @@ export function AgentStudio() {
   const [newLabelColor, setNewLabelColor] =
     useState<StudioLabel["color"]>("blue");
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [operation, setOperation] = useState("");
+  const [lastSubmission, setLastSubmission] = useState("");
   const draft = useStudioDraft(tenantId, slug, conversationId);
   const prompt = draft.value;
   const studioRef = useRef<HTMLDivElement>(null);
@@ -264,14 +285,27 @@ export function AgentStudio() {
   const transcriptScroll = useTranscriptScroll(chat.messages, isBusy);
   const availableAgents = useMemo(
     () =>
-      agents.filter(
-        (agent) =>
-          ["online", "degraded"].includes(agent.status) &&
-          (!tenantId ||
-            agent.tenantId === tenantId ||
-            agent.visibility === "public" ||
-            agent.allowedTenantIds.includes(tenantId)),
-      ),
+      [...agents]
+        .filter(
+          (agent) =>
+            ["online", "degraded"].includes(agent.status) &&
+            (!tenantId ||
+              agent.tenantId === tenantId ||
+              agent.visibility === "public" ||
+              agent.allowedTenantIds.includes(tenantId)),
+        )
+        // A degraded external registration is still selectable for diagnosis,
+        // but it must never become the first-run conversation target when a
+        // healthy local A2A Agent is available.
+        .sort((left, right) => {
+          const health =
+            Number(right.healthStatus === "healthy") -
+            Number(left.healthStatus === "healthy");
+          return (
+            health ||
+            Number(right.status === "online") - Number(left.status === "online")
+          );
+        }),
     [agents, tenantId],
   );
   const selected = availableAgents.find((agent) => agent.slug === slug);
@@ -481,29 +515,47 @@ export function AgentStudio() {
     }
   };
   const renameConversation = async (conversation: StudioConversation) => {
-    if (!tenantId || !renameValue.trim()) return;
-    await platformApi.updateStudioConversation(token, conversation.id, {
-      tenantId,
-      title: renameValue.trim(),
-    });
-    setRenamingTaskId("");
-    await conversations.refresh();
+    if (!tenantId || !renameValue.trim() || operation) return;
+    setOperation(`rename:${conversation.id}`);
+    try {
+      await platformApi.updateStudioConversation(token, conversation.id, {
+        tenantId,
+        title: renameValue.trim(),
+      });
+      setRenamingTaskId("");
+      await conversations.refresh();
+      toast.success("会话已重命名");
+    } catch (error) {
+      setConversationError(
+        error instanceof Error ? error.message : "重命名会话失败，请重试。",
+      );
+    } finally {
+      setOperation("");
+    }
   };
   const archiveConversation = async (conversation: StudioConversation) => {
-    if (!tenantId) return;
-    await platformApi.updateStudioConversation(token, conversation.id, {
-      tenantId,
-      status: conversation.status === "archived" ? "active" : "archived",
-    });
-    if (
-      conversationId === conversation.id &&
-      conversation.status !== "archived"
-    )
-      startNewConversation();
-    await conversations.refresh();
+    if (!tenantId || operation) return;
+    setOperation(`archive:${conversation.id}`);
+    try {
+      const restoring = conversation.status === "archived";
+      await platformApi.updateStudioConversation(token, conversation.id, {
+        tenantId,
+        status: restoring ? "active" : "archived",
+      });
+      if (conversationId === conversation.id && !restoring) startNewConversation();
+      await conversations.refresh();
+      toast.success(restoring ? "会话已恢复" : "会话已归档");
+    } catch (error) {
+      setConversationError(
+        error instanceof Error ? error.message : "更新会话状态失败，请重试。",
+      );
+    } finally {
+      setOperation("");
+    }
   };
   const deleteConversation = async (conversation: StudioConversation) => {
-    if (!tenantId) return;
+    if (!tenantId || operation) return;
+    setOperation(`delete:${conversation.id}`);
     try {
       await platformApi.updateStudioConversation(token, conversation.id, {
         tenantId,
@@ -511,16 +563,20 @@ export function AgentStudio() {
       });
       if (conversationId === conversation.id) startNewConversation();
       await conversations.refresh();
+      toast.success("会话已删除");
     } catch (error) {
       setConversationError(
         error instanceof Error ? error.message : "删除会话失败。",
       );
+    } finally {
+      setOperation("");
     }
   };
   const send = async (overrideMessage?: string) => {
     const message = (overrideMessage ?? prompt).trim();
     if (!message || isBusy || !slug || !token || !tenantId) return;
     generationCancelled.current = false;
+    setLastSubmission(message);
     draft.clear();
     setConversationError("");
     setStreamPhase("connecting");
@@ -617,6 +673,7 @@ export function AgentStudio() {
   const copyMessage = async (text: string) => {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
+      toast.success("已复制到剪贴板");
       return;
     }
     const area = document.createElement("textarea");
@@ -627,6 +684,7 @@ export function AgentStudio() {
     area.select();
     document.execCommand("copy");
     area.remove();
+    toast.success("已复制到剪贴板");
   };
   const forkFromMessage = async (message: UIMessage) => {
     if (!conversationId || !tenantId) return;
@@ -651,6 +709,7 @@ export function AgentStudio() {
       setPersistedMessages(fork.messages);
       chat.setMessages(transcriptToMessages(fork.messages));
       await conversations.refresh();
+      toast.success("已创建会话分支");
     } catch (error) {
       setConversationError(
         error instanceof Error ? error.message : "创建对话分支失败。",
@@ -679,6 +738,7 @@ export function AgentStudio() {
       chat.setMessages(transcriptToMessages(fork.messages));
       draft.setValue(content, "recovery");
       await conversations.refresh();
+      toast.success("已创建编辑分支，请确认后发送");
       requestAnimationFrame(() => composerRef.current?.focus());
     } catch (error) {
       setConversationError(
@@ -717,6 +777,7 @@ export function AgentStudio() {
           rating,
         },
       );
+      toast.success(rating > 0 ? "感谢你的反馈" : "已记录改进反馈");
     } catch (error) {
       setConversationError(
         error instanceof Error ? error.message : "保存反馈失败。",
@@ -731,7 +792,8 @@ export function AgentStudio() {
     setRevisionMessageId(message.id);
   };
   const exportConversation = async () => {
-    if (!conversationId || !tenantId) return;
+    if (!conversationId || !tenantId || operation) return;
+    setOperation("export");
     try {
       const { blob, filename } = await downloadStudioConversation(
         token,
@@ -746,10 +808,13 @@ export function AgentStudio() {
       anchor.click();
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      toast.success("会话导出已开始");
     } catch (error) {
       setConversationError(
         error instanceof Error ? error.message : "导出会话失败。",
       );
+    } finally {
+      setOperation("");
     }
   };
   const updateConversationLabels = async (labelIds: string[]) => {
@@ -864,7 +929,7 @@ export function AgentStudio() {
             租户
             <Select
               value={tenantId || undefined}
-              options={tenants.map((tenant) => ({
+              options={activeTenants.map((tenant) => ({
                 value: tenant.id,
                 label: tenant.displayName,
               }))}
@@ -926,17 +991,31 @@ export function AgentStudio() {
         />
         <main className={styles.studioConversation}>
           <header className={styles.studioHeader}>
-            <div>
-              <b>
-                {activeConversation?.title ??
-                  selected?.displayName ??
-                  "选择 Agent 开始对话"}
-              </b>
-              <span>
-                {taskId
-                  ? `任务 ${taskId.slice(0, 8)}…`
-                  : "新对话 · 首次发送后创建上下文"}
-              </span>
+            <div className={styles.studioHeaderTitle}>
+              <Tooltip title="返回控制台">
+                <Button
+                  className={styles.studioBackButton}
+                  type="text"
+                  size="small"
+                  icon={<LeftOutlined />}
+                  aria-label="返回控制台"
+                  onClick={onExitStudio}
+                >
+                  控制台
+                </Button>
+              </Tooltip>
+              <div className={styles.studioHeaderTitleText}>
+                <b>
+                  {activeConversation?.title ??
+                    selected?.displayName ??
+                    "选择 Agent 开始对话"}
+                </b>
+                <span>
+                  {taskId
+                    ? `任务 ${taskId.slice(0, 8)}…`
+                    : "新对话 · 首次发送后创建上下文"}
+                </span>
+              </div>
             </div>
             <div className={styles.studioHeaderActions}>
               <Button
@@ -997,7 +1076,8 @@ export function AgentStudio() {
                   aria-label="导出会话"
                   icon={<DownloadOutlined />}
                   onClick={() => void exportConversation()}
-                  disabled={!conversationId || isBusy}
+                  disabled={!conversationId || isBusy || Boolean(operation)}
+                  loading={operation === "export"}
                 />
               </Tooltip>
               {phaseLabel && (
@@ -1125,6 +1205,7 @@ export function AgentStudio() {
                               setRenameValue(event.target.value)
                             }
                             onBlur={() => setRenamingTaskId("")}
+                            disabled={operation === `rename:${conversation.id}`}
                           />
                         </form>
                       ) : (
@@ -1153,6 +1234,8 @@ export function AgentStudio() {
                               setRenamingTaskId(conversation.id);
                               setRenameValue(conversation.title);
                             }}
+                            disabled={Boolean(operation) || isBusy}
+                            loading={operation === `rename:${conversation.id}`}
                           />
                         </Tooltip>
                         <Tooltip
@@ -1176,6 +1259,8 @@ export function AgentStudio() {
                             onClick={() =>
                               void archiveConversation(conversation)
                             }
+                            disabled={Boolean(operation) || isBusy}
+                            loading={operation === `archive:${conversation.id}`}
                           />
                         </Tooltip>
                         <Popconfirm
@@ -1192,6 +1277,8 @@ export function AgentStudio() {
                             type="text"
                             size="small"
                             danger
+                            disabled={Boolean(operation) || isBusy}
+                            loading={operation === `delete:${conversation.id}`}
                             icon={<DeleteOutlined />}
                           />
                         </Popconfirm>
@@ -1260,6 +1347,15 @@ export function AgentStudio() {
                   >
                     关闭提示
                   </Button>
+                  {lastSubmission && !isBusy && (
+                    <Button
+                      size="small"
+                      type="link"
+                      onClick={() => void send(lastSubmission)}
+                    >
+                      重试
+                    </Button>
+                  )}
                 </div>
               )}
               <div

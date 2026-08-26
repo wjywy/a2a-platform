@@ -188,7 +188,9 @@ export function AgentsPage({ openRegister }: { openRegister: () => void }) {
                       </span>
                       <StatusBadge value={agent.status} />
                     </header>
-                    <p>{agent.description || agent.cardUrl}</p>
+                    <p title={agent.description ? undefined : agent.cardUrl}>
+                      {agent.description || agent.cardUrl}
+                    </p>
                     <footer>
                       <span>{agent.selectedInterface.protocolBinding}</span>
                       <StatusBadge value={agent.healthStatus} />

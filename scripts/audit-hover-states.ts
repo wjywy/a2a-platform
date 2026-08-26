@@ -56,6 +56,14 @@ type AuditTarget = (typeof targets)[number];
 
 async function waitForConsole(page: Page) {
   await page.waitForLoadState("domcontentloaded");
+  if (new URL(page.url()).pathname === "/debug") {
+    await page.getByRole("button", { name: "返回控制台" }).waitFor({
+      state: "visible",
+      timeout: 15_000,
+    });
+    await page.waitForTimeout(300);
+    return;
+  }
   await page.locator("main h1").first().waitFor({ state: "visible" });
   await page
     .getByText("正在加载数据")
@@ -134,11 +142,13 @@ for (const route of routes) {
 
 await page.goto(`${baseUrl}/debug`);
 await waitForConsole(page);
-await page.locator("button").filter({ hasText: "新建" }).first().click();
-await page.getByRole("dialog").waitFor({ state: "visible" });
+await page.getByRole("button", { name: "打开 Agent 调用配置" }).click();
+await page.getByLabel("Agent 调用配置", { exact: true }).waitFor({
+  state: "visible",
+});
 await auditVisibleTargets(
   page,
-  "debug-api-key-modal",
+  "debug-settings-drawer",
   targets.filter(([category]) =>
     [
       "text-input",
@@ -150,7 +160,7 @@ await auditVisibleTargets(
   ),
   report,
 );
-await page.keyboard.press("Escape");
+await page.getByRole("button", { name: "关闭 Agent 调用配置" }).click();
 
 await page.goto(`${baseUrl}/tasks`);
 await waitForConsole(page);

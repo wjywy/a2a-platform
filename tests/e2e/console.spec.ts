@@ -66,10 +66,11 @@ test("self-registered customer can sign up, browse the safe public catalog, and 
     ).toBeVisible();
     await expect(page.getByText("股票专家").first()).toBeVisible();
     await expect(page.getByText("公开可见")).toBeVisible();
+    await page.getByRole("button", { name: /股票专家/ }).click();
     await expect(
       page.getByTitle(
         "http://localhost:8080/agents/stock-expert/.well-known/agent-card.json",
-      ),
+      ).last(),
     ).toBeVisible();
     await expect(page.getByText(/host\.docker\.internal/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /注册 Agent/ })).toHaveCount(
@@ -244,6 +245,17 @@ test("all primary console pages are reachable and render real content", async ({
   for (const [navigation, heading, path] of pages) {
     await page.getByRole("button", { name: navigation, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${path}$`));
+    if (path === "/debug") {
+      await expect(
+        page.getByRole("button", { name: "返回控制台" }),
+      ).toBeVisible();
+      await expect(
+        page.getByPlaceholder("给 Agent 发送消息…"),
+      ).toBeVisible();
+      await page.goto("/overview");
+      await expect(page.getByRole("heading", { name: "运行概览" })).toBeVisible();
+      continue;
+    }
     await expect(
       page.getByRole("heading", { name: heading, exact: true, level: 2 }),
     ).toBeVisible();
@@ -335,18 +347,25 @@ test("Agent registration dialog contains operational fields and can be dismissed
   ).toBeHidden();
 });
 
-test("debug studio restores a newly generated API Key after a page refresh", async ({ page }) => {
-  const keyName = `studio-key-${Date.now()}`;
+test("debug studio keeps its server-side configuration drawer after refresh", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name.includes("mobile"),
+    "the configuration drawer is intentionally desktop-only",
+  );
   await page.goto("/debug");
-  await page.getByRole("button", { name: "新建 Key" }).click();
-  await page.getByRole("button", { name: "创建 Key" }).click();
-  await page.getByLabel("名称").fill(keyName);
-  await page.getByRole("button", { name: "创建 Key", exact: true }).click();
-  const secret = await page.locator(".ant-modal .ant-typography code").textContent();
-  expect(secret).toMatch(/^a2a_live_/);
-
+  await page.getByRole("button", { name: "打开 Agent 调用配置" }).click();
+  const drawer = page.getByLabel("Agent 调用配置", { exact: true });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText("服务端安全代理")).toBeVisible();
+  await drawer
+    .getByRole("button", { name: "关闭 Agent 调用配置" })
+    .click();
+  await expect(drawer).toBeHidden();
   await page.reload();
-  await page.getByRole("combobox", { name: "已保存的 Key" }).click();
-  await page.getByText(keyName, { exact: false }).click();
-  await expect(page.getByPlaceholder("a2a_live_…")).toHaveValue(secret!);
+  await expect(
+    page.getByRole("button", { name: "返回控制台" }),
+  ).toBeVisible();
+  await expect(page.getByPlaceholder("给 Agent 发送消息…")).toBeVisible();
 });

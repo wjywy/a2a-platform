@@ -11,7 +11,12 @@ const adminHeaders = {
 };
 const apiBase = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:8080";
 
-type Tenant = { id: string; displayName: string };
+type Tenant = {
+  id: string;
+  displayName: string;
+  slug: string;
+  status: "active" | "suspended";
+};
 type Conversation = { id: string; title: string; agentSlug: string };
 type Message = { id: string; sequence: number; content: string };
 
@@ -43,7 +48,13 @@ async function defaultTenant(request: APIRequestContext) {
     "/api/admin/tenants?page=1&pageSize=100",
   );
   expect(value.items.length).toBeGreaterThan(0);
-  return value.items[0];
+  return (
+    value.items.find(
+      (item) => item.slug === "default" && item.status === "active",
+    ) ??
+    value.items.find((item) => item.status === "active") ??
+    value.items[0]
+  );
 }
 
 async function createConversation(
@@ -118,6 +129,7 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
     ).toBeVisible();
   }
   await expect(page.getByRole("button", { name: /发送/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "返回控制台" })).toBeVisible();
 
   const dimensions = await page.evaluate(() => ({
     width: document.documentElement.clientWidth,
@@ -125,6 +137,15 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
   }));
   expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.width + 1);
 
+});
+
+test("Studio provides an explicit return path to the operations console", async ({
+  page,
+}) => {
+  await page.goto("/debug");
+  await page.getByRole("button", { name: "返回控制台" }).click();
+  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page.getByRole("heading", { name: "运行概览" })).toBeVisible();
 });
 
 test("authenticated Studio sends a real message and keeps the user bubble content-sized", async ({

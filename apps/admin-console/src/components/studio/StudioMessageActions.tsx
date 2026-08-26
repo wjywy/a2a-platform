@@ -47,13 +47,32 @@ export function StudioMessageActions({
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => messageText(message));
+  const [action, setAction] = useState<string>();
   const text = messageText(message);
   const isUser = message.role === "user";
 
+  const run = async (name: string, task: () => Promise<void> | void) => {
+    if (busy || action) return;
+    setAction(name);
+    try {
+      await task();
+    } finally {
+      setAction(undefined);
+    }
+  };
+
   const copy = async () => {
-    await handlers.onCopy(text);
+    await run("copy", () => handlers.onCopy(text));
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1_600);
+  };
+  const saveEdit = async () => {
+    if (!draft.trim() || draft.trim() === text) {
+      setEditing(false);
+      return;
+    }
+    await run("edit", () => handlers.onEdit(message, draft.trim()));
+    setEditing(false);
   };
   if (editing) {
     return (
@@ -61,10 +80,7 @@ export function StudioMessageActions({
         className={styles.studioMessageEditor}
         onSubmit={(event) => {
           event.preventDefault();
-          if (draft.trim() && draft.trim() !== text) {
-            void handlers.onEdit(message, draft.trim());
-          }
-          setEditing(false);
+          void saveEdit();
         }}
       >
         <Input.TextArea
@@ -79,6 +95,7 @@ export function StudioMessageActions({
             size="small"
             htmlType="button"
             onClick={() => setEditing(false)}
+            disabled={Boolean(action)}
           >
             取消
           </Button>
@@ -86,7 +103,8 @@ export function StudioMessageActions({
             size="small"
             type="primary"
             htmlType="submit"
-            disabled={!draft.trim() || busy}
+            loading={action === "edit"}
+            disabled={!draft.trim() || busy || Boolean(action)}
           >
             保存并重新发送
           </Button>
@@ -101,7 +119,8 @@ export function StudioMessageActions({
           type="text"
           size="small"
           aria-label="复制消息"
-          disabled={!text}
+          loading={action === "copy"}
+          disabled={!text || busy || Boolean(action)}
           icon={copied ? <CheckOutlined /> : <CopyOutlined />}
           onClick={() => void copy()}
         />
@@ -113,7 +132,7 @@ export function StudioMessageActions({
               type="text"
               size="small"
               aria-label="编辑并重新发送"
-              disabled={busy}
+              disabled={busy || Boolean(action)}
               icon={<EditOutlined />}
               onClick={() => {
                 setDraft(text);
@@ -126,9 +145,10 @@ export function StudioMessageActions({
               type="text"
               size="small"
               aria-label="从这里分支"
-              disabled={busy}
+              loading={action === "fork"}
+              disabled={busy || Boolean(action)}
               icon={<BranchesOutlined />}
-              onClick={() => void handlers.onFork(message)}
+              onClick={() => void run("fork", () => handlers.onFork(message))}
             />
           </Tooltip>
           <Tooltip title="查看编辑记录">
@@ -136,9 +156,10 @@ export function StudioMessageActions({
               type="text"
               size="small"
               aria-label="查看编辑记录"
-              disabled={busy}
+              loading={action === "history"}
+              disabled={busy || Boolean(action)}
               icon={<HistoryOutlined />}
-              onClick={() => void handlers.onHistory(message)}
+              onClick={() => void run("history", () => handlers.onHistory(message))}
             />
           </Tooltip>
         </>
@@ -149,9 +170,10 @@ export function StudioMessageActions({
               type="text"
               size="small"
               aria-label="重新生成"
-              disabled={busy}
+              loading={action === "retry"}
+              disabled={busy || Boolean(action)}
               icon={<RedoOutlined />}
-              onClick={() => void handlers.onRetry(message)}
+              onClick={() => void run("retry", () => handlers.onRetry(message))}
             />
           </Tooltip>
           <Tooltip title="有帮助">
@@ -159,9 +181,10 @@ export function StudioMessageActions({
               type="text"
               size="small"
               aria-label="有帮助"
-              disabled={busy}
+              loading={action === "like"}
+              disabled={busy || Boolean(action)}
               icon={<LikeOutlined />}
-              onClick={() => void handlers.onFeedback(message, 1)}
+              onClick={() => void run("like", () => handlers.onFeedback(message, 1))}
             />
           </Tooltip>
           <Tooltip title="需要改进">
@@ -169,9 +192,10 @@ export function StudioMessageActions({
               type="text"
               size="small"
               aria-label="需要改进"
-              disabled={busy}
+              loading={action === "dislike"}
+              disabled={busy || Boolean(action)}
               icon={<DislikeOutlined />}
-              onClick={() => void handlers.onFeedback(message, -1)}
+              onClick={() => void run("dislike", () => handlers.onFeedback(message, -1))}
             />
           </Tooltip>
         </>

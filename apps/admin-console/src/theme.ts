@@ -4,17 +4,17 @@ export const platformTheme: ThemeConfig = {
   cssVar: { prefix: "a2a" },
   hashed: true,
   token: {
-    // ChatGPT-inspired neutral base: black is the product action color, while
-    // blue is reserved for the conversational send affordance in Agent Studio.
-    colorPrimary: "#212121",
-    colorSuccess: "#157a56",
-    colorWarning: "#a86615",
-    colorError: "#c74444",
-    colorInfo: "#212121",
-    colorText: "#171717",
-    colorTextSecondary: "#6b6b6b",
-    colorBorder: "#e5e5e5",
-    colorBgLayout: "#f7f7f8",
+    // Quiet graphite workspace: ink is the primary action color and semantic
+    // tones stay muted so status never competes with the conversation.
+    colorPrimary: "#2f2f2f",
+    colorSuccess: "#19785a",
+    colorWarning: "#9a671f",
+    colorError: "#b94b50",
+    colorInfo: "#5c5c5c",
+    colorText: "#202020",
+    colorTextSecondary: "#707070",
+    colorBorder: "#dedede",
+    colorBgLayout: "#f7f7f7",
     colorBgContainer: "#ffffff",
     borderRadius: 8,
     borderRadiusLG: 12,
@@ -22,30 +22,35 @@ export const platformTheme: ThemeConfig = {
     controlHeightSM: 30,
     fontSize: 13,
     fontFamily:
-      "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif",
-    boxShadowSecondary: "0 14px 36px rgb(0 0 0 / 0.12)",
+      "Aptos, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif",
+    boxShadowSecondary: "0 14px 34px rgb(20 20 20 / 0.12)",
   },
   components: {
-    Button: { fontWeight: 620, primaryShadow: "none" },
+    Button: {
+      fontWeight: 620,
+      primaryShadow: "none",
+      defaultShadow: "none",
+      dangerShadow: "none",
+    },
     Card: { headerFontSize: 14, paddingLG: 18 },
     Checkbox: { colorPrimaryHover: "#4b4b4b" },
     Collapse: {
       headerBg: "#ffffff",
     },
     Input: {
-      hoverBorderColor: "#bdbdbd",
+      hoverBorderColor: "#a9a9a9",
     },
     InputNumber: {
-      hoverBorderColor: "#bdbdbd",
+      hoverBorderColor: "#a9a9a9",
     },
     Menu: {
       itemHeight: 38,
       itemBorderRadius: 7,
       itemMarginInline: 0,
-      itemSelectedBg: "#ececec",
+      itemSelectedBg: "#e9e9e9",
       itemSelectedColor: "#171717",
       itemColor: "#4a4a4a",
-      itemHoverBg: "#f1f1f1",
+      itemHoverBg: "#eeeeee",
       itemHoverColor: "#171717",
     },
     Pagination: {
@@ -58,14 +63,14 @@ export const platformTheme: ThemeConfig = {
     },
     Select: {
       hoverBorderColor: "#bdbdbd",
-      optionActiveBg: "#f1f1f1",
-      optionSelectedBg: "#ececec",
+      optionActiveBg: "#eeeeee",
+      optionSelectedBg: "#e9e9e9",
     },
     Table: {
       headerBg: "#fafafa",
       headerColor: "#6b6b6b",
       headerSplitColor: "transparent",
-      rowHoverBg: "#f6f6f6",
+      rowHoverBg: "#f5f5f5",
       cellPaddingBlockSM: 10,
       cellPaddingInlineSM: 10,
     },
@@ -75,6 +80,8 @@ export const platformTheme: ThemeConfig = {
       inkBarColor: "#171717",
       titleFontSize: 12,
     },
-    Tag: { borderRadiusSM: 5 },
+    Tag: { borderRadiusSM: 5, defaultBg: "#f0f0f0", defaultColor: "#5d5d5d" },
+    Drawer: { paddingLG: 20 },
+    Modal: { borderRadiusLG: 12, paddingContentHorizontalLG: 22 },
   },
 };

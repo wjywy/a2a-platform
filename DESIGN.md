@@ -2,21 +2,21 @@
 
 ## Visual Theme and Atmosphere
 
-面向外部客户与运营人员的浅色智能体工作台。整体采用紧凑的信息密度、分层纸面和克制的蓝色强调，优先展示 Agent 可用性、调用状态与操作入口。
+面向外部客户与运营人员的浅色智能体工作台。整体采用安静石墨色、低饱和纸面和阅读优先的层级，优先展示 Agent 可用性、调用状态与操作入口。
 
 ## Color Palette and Roles
 
 | Token   | Value                    | Role                 |
 | ------- | ------------------------ | -------------------- |
-| Canvas  | `oklch(0.975 0.006 250)` | 页面底色             |
-| Sidebar | `oklch(0.94 0.012 250)`  | 导航背景             |
+| Canvas  | `oklch(0.975 0.003 90)` | 页面底色             |
+| Sidebar | `oklch(0.94 0.004 90)`  | 导航背景             |
 | Surface | `oklch(1 0 0)`           | 表格与抽屉表面       |
-| Ink     | `oklch(0.25 0.025 255)`  | 主文字               |
-| Muted   | `oklch(0.52 0.018 255)`  | 次要文字             |
-| Brand   | `oklch(0.46 0.14 255)`   | 主操作与链接         |
-| Success | `oklch(0.58 0.13 150)`   | Online / Healthy     |
-| Warning | `oklch(0.7 0.13 80)`     | Degraded             |
-| Danger  | `oklch(0.58 0.18 28)`    | Offline / 破坏性操作 |
+| Ink     | `oklch(0.25 0.008 90)`   | 主文字               |
+| Muted   | `oklch(0.52 0.008 90)`   | 次要文字             |
+| Brand   | `oklch(0.25 0.008 90)`   | 主操作与链接         |
+| Success | `oklch(0.52 0.09 155)`   | Online / Healthy     |
+| Warning | `oklch(0.58 0.09 75)`    | Degraded             |
+| Danger  | `oklch(0.56 0.12 25)`    | Offline / 破坏性操作 |
 
 ## Typography Rules
 
@@ -28,7 +28,7 @@
 
 ## Layout Principles
 
-固定 248px 侧栏，主区以表格和详情抽屉组织。顶部只呈现当前环境、刷新时间和注册入口，不使用营销式 Hero。
+固定 240px 侧栏，主区以表格和详情抽屉组织。在线调试页是独立的全视口会话工作台：左侧为历史，中间为阅读区，低频配置与轨迹进入抽屉；顶部只保留返回、当前 Agent 和必要操作。
 
 ## Depth and Elevation
 
@@ -43,7 +43,7 @@
 
 ## Responsive Behavior
 
-小于 860px 时侧栏收起为顶部导航，Agent 表格保留名称、状态、健康度和操作四列；所有按钮保持至少 40px 点击区域。
+小于 860px 时侧栏收起为顶部导航，在线调试隐藏全局后台导航并以左滑历史抽屉承载会话；Composer 使用安全区且不占用抽屉布局；所有按钮保持至少 40px 点击区域。
 
 ## Agent Prompt Guide
 
