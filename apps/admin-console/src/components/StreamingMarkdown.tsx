@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { SseEnvelope } from "../api";
-import styles from "../App.module.css";
+import styles from "./studio/AgentStudio.module.css";
 
 type DebugEvent = SseEnvelope & { index: number; receivedAt: string };
 type JsonRecord = Record<string, unknown>;

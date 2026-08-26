@@ -250,7 +250,12 @@ function userText(body: unknown): {
   };
 }
 
-export const __symbolServiceInternals = { userText };
+export const __symbolServiceInternals = {
+  userText,
+  nasdaqHistoryToChart,
+  nasdaqInfoToSearch,
+  parseNasdaqNumber,
+};
 
 async function extractIntent(
   text: string,
@@ -446,30 +451,210 @@ async function cachedJson<T>(
 }
 async function yahoo(path: string): Promise<Json> {
   const response = await fetch(`https://query1.finance.yahoo.com${path}`, {
-    headers: { "user-agent": "a2a-platform-symbol/1.0" },
+    headers: {
+      accept: "application/json,text/plain,*/*",
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36",
+    },
     signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error(`行情数据源返回 HTTP ${response.status}`);
   return (await response.json()) as Json;
 }
+
+type NasdaqHistoryRow = {
+  date?: string;
+  close?: string;
+  volume?: string;
+  high?: string;
+  low?: string;
+};
+
+function providerError(error: unknown) {
+  return error instanceof Error ? error.message : "未知错误";
+}
+
+function parseNasdaqNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/[$,%+\s]/g, "").replace(/,/g, "");
+  if (!normalized || normalized === "N/A" || normalized === "--") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nasdaqTimestamp(value: string | undefined): number | null {
+  const match = value?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  const timestamp = Date.UTC(
+    Number(match[3]),
+    Number(match[1]) - 1,
+    Number(match[2]),
+  );
+  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : null;
+}
+
+function nasdaqHistoryToChart(payload: Json): Json {
+  const data = payload.data as
+    | {
+        tradesTable?: { rows?: NasdaqHistoryRow[] };
+      }
+    | undefined;
+  const points = (data?.tradesTable?.rows ?? [])
+    .map((row) => ({
+      timestamp: nasdaqTimestamp(row.date),
+      close: parseNasdaqNumber(row.close),
+      high: parseNasdaqNumber(row.high),
+      low: parseNasdaqNumber(row.low),
+      volume: parseNasdaqNumber(row.volume),
+    }))
+    .filter(
+      (point): point is {
+        timestamp: number;
+        close: number;
+        high: number | null;
+        low: number | null;
+        volume: number | null;
+      } => point.timestamp !== null && point.close !== null,
+    )
+    .sort((left, right) => left.timestamp - right.timestamp);
+  if (!points.length) throw new Error("Nasdaq 未返回可用历史行情");
+  return {
+    chart: {
+      result: [
+        {
+          timestamp: points.map((point) => point.timestamp),
+          indicators: {
+            quote: [
+              {
+                close: points.map((point) => point.close),
+                high: points.map((point) => point.high),
+                low: points.map((point) => point.low),
+                volume: points.map((point) => point.volume),
+              },
+            ],
+          },
+        },
+      ],
+      error: null,
+    },
+  };
+}
+
+function nasdaqInfoToSearch(payload: Json): Json {
+  const data = payload.data as
+    | {
+        symbol?: string;
+        companyName?: string;
+        exchange?: string;
+        stockType?: string;
+        assetClass?: string;
+        primaryData?: {
+          lastSalePrice?: string;
+          lastTradeTimestamp?: string;
+        };
+      }
+    | undefined;
+  if (!data?.symbol) throw new Error("Nasdaq 未返回标的信息");
+  return {
+    quotes: [
+      {
+        symbol: data.symbol,
+        shortname: data.companyName,
+        longname: data.companyName,
+        exchange: data.exchange,
+        quoteType: data.assetClass ?? data.stockType,
+        regularMarketPrice: parseNasdaqNumber(data.primaryData?.lastSalePrice),
+        regularMarketTime: data.primaryData?.lastTradeTimestamp,
+      },
+    ],
+    news: [],
+  };
+}
+
+function nasdaqStartDate(range: string) {
+  const days = range === "1y" ? 380 : range === "6mo" ? 190 : 14;
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+async function nasdaq(path: string): Promise<Json> {
+  const response = await fetch(`https://api.nasdaq.com${path}`, {
+    headers: {
+      accept: "application/json,text/plain,*/*",
+      origin: "https://www.nasdaq.com",
+      referer: "https://www.nasdaq.com/",
+      "user-agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36",
+    },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok)
+    throw new Error(`Nasdaq 行情数据源返回 HTTP ${response.status}`);
+  const payload = (await response.json()) as Json;
+  if (!payload.data) throw new Error("Nasdaq 行情数据源未返回数据");
+  return payload;
+}
+
+async function nasdaqChart(symbol: string, range: string): Promise<Json> {
+  const payload = await nasdaq(
+    `/api/quote/${encodeURIComponent(symbol)}/historical?assetclass=stocks&fromdate=${nasdaqStartDate(range)}&limit=400`,
+  );
+  return nasdaqHistoryToChart(payload);
+}
+
+async function withMarketFallback(
+  yahooLoad: () => Promise<Json>,
+  nasdaqLoad: () => Promise<Json>,
+) {
+  try {
+    return await yahooLoad();
+  } catch (yahooError) {
+    try {
+      return await nasdaqLoad();
+    } catch (nasdaqError) {
+      throw new Error(
+        `可用行情数据源均失败（Yahoo：${providerError(yahooError)}；Nasdaq：${providerError(nasdaqError)}）`,
+      );
+    }
+  }
+}
 async function quote(symbol: string) {
   return cachedJson(`symbol:quote:${symbol}`, 30, async () =>
-    yahoo(
-      `/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`,
+    withMarketFallback(
+      () =>
+        yahoo(
+          `/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`,
+        ),
+      () => nasdaqChart(symbol, "5d"),
     ),
   );
 }
 async function chart(symbol: string, range = "6mo") {
   return cachedJson(`symbol:chart:${symbol}:${range}`, 300, async () =>
-    yahoo(
-      `/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=1d`,
+    withMarketFallback(
+      () =>
+        yahoo(
+          `/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=1d`,
+        ),
+      () => nasdaqChart(symbol, range),
     ),
   );
 }
 async function search(symbol: string) {
   return cachedJson(`symbol:search:${symbol}`, 600, async () =>
-    yahoo(
-      `/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=1&newsCount=12`,
+    withMarketFallback(
+      () =>
+        yahoo(
+          `/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=1&newsCount=12`,
+        ),
+      async () =>
+        nasdaqInfoToSearch(
+          await nasdaq(
+            `/api/quote/${encodeURIComponent(symbol)}/info?assetclass=stocks`,
+          ),
+        ),
     ),
   );
 }

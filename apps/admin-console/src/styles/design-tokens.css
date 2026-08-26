@@ -1,0 +1,202 @@
+:root {
+  color-scheme: light;
+
+  /* Typeface */
+  --font-sans:
+    "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Noto Sans CJK SC",
+    "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, Arial, sans-serif;
+  --font-display:
+    "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Noto Sans CJK SC",
+    "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas,
+    "Liberation Mono", monospace;
+  --font-size-2xs: 10px;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-lg: 14px;
+  --font-size-xl: 16px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+  --line-height-tight: 1.25;
+  --line-height-copy: 1.55;
+  --line-height-reading: 1.72;
+  --font-weight-regular: 400;
+  --font-weight-medium: 540;
+  --font-weight-semibold: 620;
+  --font-weight-bold: 700;
+
+  /* Neutral canvas */
+  --color-surface-canvas: #ffffff;
+  --color-surface-layout: #f7f7f7;
+  --color-surface-subtle: #f7f7f7;
+  --color-surface-muted: #eeeeee;
+  --color-surface-raised: #ffffff;
+  --color-surface-inverse: #212121;
+  --color-sidebar-background: #f9f9f9;
+  --color-sidebar-hover: #ededed;
+  --color-sidebar-selected: #e8e8e8;
+  --color-composer-background: #f4f4f4;
+  --color-composer-background-active: #f2f2f2;
+  --color-user-message: #f4f4f4;
+
+  /* Ink hierarchy */
+  --color-text-primary: #212121;
+  --color-text-secondary: #626262;
+  --color-text-tertiary: #858585;
+  --color-text-quaternary: #a3a3a3;
+  --color-text-disabled: #ababab;
+  --color-text-inverse: #ffffff;
+  --color-icon-primary: #3f3f3f;
+  --color-icon-secondary: #777777;
+
+  /* Borders */
+  --color-border-faint: #eeeeee;
+  --color-border-subtle: #e3e3e3;
+  --color-border-default: #d8d8d8;
+  --color-border-strong: #bcbcbc;
+  --color-divider: #e7e7e7;
+
+  /* Action hierarchy */
+  --color-action-primary: #212121;
+  --color-action-primary-hover: #303030;
+  --color-action-primary-active: #252525;
+  --color-action-on-primary: #ffffff;
+  --color-action-secondary: #ffffff;
+  --color-action-secondary-hover: #f3f3f3;
+  --color-action-secondary-active: #ebebeb;
+  --color-action-danger: #a43e45;
+  --color-action-danger-hover: #8d3037;
+  --color-action-disabled: #e5e5e5;
+  --color-interactive-hover: #eeeeee;
+  --color-interactive-active: #e4e4e4;
+  --color-focus-ring: #5d5d5d;
+  --color-link: #385979;
+  --color-link-hover: #1f4569;
+
+  /* Quiet semantic palette */
+  --color-status-progress: #43607c;
+  --color-status-progress-bg: #f1f5f8;
+  --color-status-progress-border: #ced9e2;
+  --color-status-success: #18794e;
+  --color-status-success-bg: #f1f8f4;
+  --color-status-success-border: #c9e1d4;
+  --color-status-warning: #8a6116;
+  --color-status-warning-bg: #fff8ea;
+  --color-status-warning-border: #ead8aa;
+  --color-status-danger: #a43e45;
+  --color-status-danger-bg: #fff5f5;
+  --color-status-danger-border: #e8cccf;
+
+  /* Code */
+  --color-code-inline: #ededed;
+  --color-code-text: #292929;
+  --color-code-block: #1f1f1f;
+  --color-code-block-text: #e7e7e7;
+
+  /* Spacing */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Radius: restrained, never pill-shaped unless the control is circular */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-dialog: 12px;
+  --radius-composer: 28px;
+  --radius-round: 999px;
+
+  /* Depth */
+  --shadow-none: none;
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 4%);
+  --shadow-sm: 0 3px 10px rgb(0 0 0 / 7%);
+  --shadow-md: 0 10px 28px rgb(0 0 0 / 10%);
+  --shadow-lg: 0 18px 46px rgb(0 0 0 / 13%);
+  --shadow-focus: 0 0 0 2px rgb(93 93 93 / 16%);
+
+  /* Controls */
+  --control-height-xs: 28px;
+  --control-height-sm: 32px;
+  --control-height-md: 36px;
+  --control-height-lg: 40px;
+  --control-height-touch: 44px;
+  --control-padding-inline-sm: 9px;
+  --control-padding-inline-md: 12px;
+  --control-padding-inline-lg: 15px;
+
+  /* Workspace dimensions */
+  --console-sidebar-width: 232px;
+  --console-sidebar-compact-width: 208px;
+  --console-topbar-height: 80px;
+  --console-content-width: 1480px;
+  --studio-sidebar-width: 260px;
+  --studio-reading-width: 48rem;
+
+  /* Timing */
+  --duration-press: 90ms;
+  --duration-fast: 120ms;
+  --duration-hover: 140ms;
+  --duration-standard: 160ms;
+  --duration-drawer: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);
+
+  /* Safe area values stay reusable and testable. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+@media (max-width: 760px) {
+  :root {
+    --font-size-md: 14px;
+    --console-topbar-height: 72px;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-text-secondary: #454545;
+    --color-text-tertiary: #606060;
+    --color-border-faint: #d4d4d4;
+    --color-border-subtle: #c5c5c5;
+    --color-border-default: #ababab;
+    --color-focus-ring: #111111;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --color-surface-canvas: Canvas;
+    --color-surface-layout: Canvas;
+    --color-surface-subtle: Canvas;
+    --color-surface-muted: Canvas;
+    --color-surface-raised: Canvas;
+    --color-sidebar-background: Canvas;
+    --color-sidebar-hover: Highlight;
+    --color-sidebar-selected: Highlight;
+    --color-text-primary: CanvasText;
+    --color-text-secondary: CanvasText;
+    --color-text-tertiary: CanvasText;
+    --color-action-primary: ButtonText;
+    --color-action-on-primary: ButtonFace;
+    --color-border-subtle: CanvasText;
+    --color-border-default: CanvasText;
+    --color-focus-ring: Highlight;
+  }
+}

@@ -15,7 +15,7 @@ import {
   TeamOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
-import styles from "./App.module.css";
+import styles from "./ConsoleShell.module.css";
 import { useApp } from "./AppContext";
 
 export type PageKey =
@@ -110,11 +110,13 @@ export function Layout({
   onPage,
   children,
   onRegister,
+  onWarmPage,
 }: {
   page: PageKey;
   onPage: (page: PageKey) => void;
   children: ReactNode;
   onRegister: () => void;
+  onWarmPage: (page: PageKey) => void;
 }) {
   const {
     user,
@@ -148,7 +150,7 @@ export function Layout({
         </div>
         {canWrite && (
           <Button
-            type="primary"
+            type="text"
             block
             icon={<PlusOutlined />}
             className={styles.sidebarPrimary}
@@ -175,6 +177,9 @@ export function Layout({
                         : item.label
                     }
                     className={page === item.key ? styles.navActive : ""}
+                    onMouseEnter={() => onWarmPage(item.key)}
+                    onFocus={() => onWarmPage(item.key)}
+                    onPointerDown={() => onWarmPage(item.key)}
                     onClick={() => onPage(item.key)}
                   >
                     {item.key === "agents" && !canWrite
@@ -245,6 +250,8 @@ export function Layout({
                 <Button
                   aria-label="快速进入平台设置"
                   icon={<SettingOutlined />}
+                  onMouseEnter={() => onWarmPage("settings")}
+                  onFocus={() => onWarmPage("settings")}
                   onClick={() => onPage("settings")}
                 />
               </Tooltip>
@@ -262,6 +269,8 @@ export function Layout({
               item.key === "agents" && !canWrite ? "Agent 目录" : item.label
             }
             className={page === item.key ? styles.mobileActive : ""}
+            onPointerDown={() => onWarmPage(item.key)}
+            onFocus={() => onWarmPage(item.key)}
             onClick={() => onPage(item.key)}
           >
             {item.icon}

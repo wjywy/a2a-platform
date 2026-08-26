@@ -117,15 +117,20 @@ test("Agent Studio renders a compact conversation workspace without horizontal o
         ),
       )
       .toBe(0);
-    await expect(historyDrawer.getByText("A2A Hub", { exact: true })).toBeVisible();
+    await expect(
+      historyDrawer.getByText("A2A Studio", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "返回控制台" }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "关闭会话历史" }).first().click();
     await expect(historyDrawer).toBeHidden();
   } else {
     await expect(
-      page.getByLabel("会话管理").getByText("A2A Hub", { exact: true }),
+      page.getByLabel("会话管理").getByText("A2A Studio", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "新建对话" }).first(),
+      page.getByRole("button", { name: /新建会话/ }).first(),
     ).toBeVisible();
   }
   await expect(page.getByRole("button", { name: /发送/ })).toBeVisible();
@@ -152,12 +157,12 @@ test("authenticated Studio sends a real message and keeps the user bubble conten
   page,
 }) => {
   await page.goto("/debug");
-  const composer = page.getByPlaceholder("给 Agent 发送消息…");
+  const composer = page.getByRole("textbox", { name: "给 Agent 发送消息" });
   await expect(composer).toBeEnabled();
   await composer.fill("请分析 AAPL 的近期走势、关键风险和需要关注的指标");
   await page.getByRole("button", { name: "发送" }).click();
 
-  const userMessage = page.locator('[class*="studioUserMessage"]').last();
+  const userMessage = page.locator('[data-message-role="user"]').last();
   await expect(userMessage).toContainText("分析 AAPL 的近期走势");
   const bounds = await userMessage.boundingBox();
   expect(bounds, "user bubble should be rendered").not.toBeNull();
@@ -166,7 +171,7 @@ test("authenticated Studio sends a real message and keeps the user bubble conten
   // The composer is disabled while the stream is active and becomes usable
   // again only after the server sends a terminal task state.
   await expect(composer).toBeEnabled({ timeout: 25_000 });
-  const agentMessage = page.locator('[class*="studioAgentMessage"]').last();
+  const agentMessage = page.locator('[data-message-role="assistant"]').last();
   await expect(agentMessage.locator('[class*="markdownDocument"]')).not.toBeEmpty();
 });
 
@@ -184,7 +189,7 @@ test("Studio closes a failed SSE stream and restores the composer", async ({
         body: 'data: {"error":{"code":"REMOTE_STREAM_ERROR","message":"模拟远端 Agent 失败"}}\n\n',
       }),
   );
-  const composer = page.getByPlaceholder("给 Agent 发送消息…");
+  const composer = page.getByRole("textbox", { name: "给 Agent 发送消息" });
   await composer.fill("触发失败流");
   await page.getByRole("button", { name: "发送" }).click();
   await expect(page.getByRole("alert")).toContainText("模拟远端 Agent 失败");
@@ -275,8 +280,11 @@ test("restoring a saved conversation keeps the user-visible transcript and expos
   });
 
   await page.goto("/debug");
-  await page.getByRole("button", { name: "打开 Agent 调用配置" }).click();
-  const studio = page.getByLabel("Agent 调用配置");
+  await page
+    .getByRole("button", { name: "打开 Agent 调用配置" })
+    .first()
+    .click();
+  const studio = page.getByRole("dialog").filter({ hasText: "调用配置" });
   await studio.getByRole("combobox").first().click();
   await page.getByText(tenant.displayName, { exact: true }).last().click();
   await studio.getByRole("combobox").nth(1).click();
@@ -284,8 +292,11 @@ test("restoring a saved conversation keeps the user-visible transcript and expos
   await studio.getByRole("button", { name: "关闭 Agent 调用配置" }).click();
   const search = page.getByPlaceholder("搜索会话");
   await search.fill(title);
-  await expect(page.getByRole("button", { name: title })).toBeVisible();
-  await page.getByRole("button", { name: title }).click();
+  const conversationRow = page.locator(
+    `[data-conversation-id="${conversation.id}"]`,
+  );
+  await expect(conversationRow).toBeVisible();
+  await conversationRow.locator("button").first().click();
   const transcript = page.getByLabel("Agent 对话");
   await expect(
     transcript.getByText("我想从自然语言开始研究一个标的"),
@@ -293,6 +304,7 @@ test("restoring a saved conversation keeps the user-visible transcript and expos
   await expect(
     transcript.getByText("请告诉我标的、时间范围或关注的风险。"),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "导出会话" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /标签/ })).toBeVisible();
+  await page.getByRole("button", { name: "打开会话菜单" }).click();
+  await expect(page.getByRole("menuitem", { name: "导出会话" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /管理标签/ })).toBeVisible();
 });

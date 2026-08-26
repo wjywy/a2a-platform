@@ -720,7 +720,40 @@ export async function forkStudioConversation(
           JSON.stringify(item.metadata ?? {}),
         ],
       );
-      forkedMessages.push(copiedMessage.rows[0]);
+      const forkedMessage = copiedMessage.rows[0];
+      forkedMessages.push(forkedMessage);
+
+      // Message edits are part of the conversation's explainability record.
+      // A branch receives new message identities, so copy revisions onto the
+      // corresponding new identity instead of silently losing edit history.
+      const revisions = await client.query<{
+        revision: number;
+        content: string;
+        edited_by: string;
+        created_at: Date;
+      }>(
+        `SELECT revision,content,edited_by,created_at
+         FROM studio_message_revisions
+         WHERE conversation_id=$1 AND message_id=$2
+         ORDER BY revision`,
+        [conversationId, item.id],
+      );
+      for (const revision of revisions.rows) {
+        await client.query(
+          `INSERT INTO studio_message_revisions(
+             id,conversation_id,message_id,revision,content,edited_by,created_at
+           ) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+          [
+            crypto.randomUUID(),
+            id,
+            forkedMessage.id,
+            revision.revision,
+            revision.content,
+            revision.edited_by,
+            revision.created_at,
+          ],
+        );
+      }
     }
     await client.query(
       `INSERT INTO studio_conversation_events(conversation_id,tenant_id,actor_id,kind,detail)

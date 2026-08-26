@@ -80,9 +80,11 @@
   border-radius: 7px;
   font: inherit;
   transition:
-    transform 120ms ease,
-    background 120ms ease,
-    border-color 120ms ease;
+    color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    border-color var(--duration-hover) var(--ease-standard),
+    box-shadow var(--duration-hover) var(--ease-standard),
+    transform var(--duration-press) var(--ease-standard);
 }
 
 .sidebarPrimary:active,
@@ -132,7 +134,11 @@
   font-weight: 600;
   padding-inline: 16px;
   text-align: left;
-  transition: none;
+  transition:
+    color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    border-color var(--duration-hover) var(--ease-standard),
+    transform var(--duration-press) var(--ease-standard);
 }
 
 .navGroup button :global(.ant-btn-icon) {
@@ -218,7 +224,9 @@
   border-left: 1px solid #dedede;
   box-shadow: -18px 0 40px rgb(20 20 20 / 14%);
   transform: translateX(105%);
-  transition: transform 180ms ease, visibility 180ms ease;
+  transition:
+    transform 180ms ease,
+    visibility 180ms ease;
   visibility: hidden;
 }
 .studioSidebarOpen {
@@ -235,7 +243,9 @@
   border-left: 1px solid #dedede;
   box-shadow: -18px 0 40px rgb(20 20 20 / 14%);
   transform: translateX(105%);
-  transition: transform 180ms ease, visibility 180ms ease;
+  transition:
+    transform 180ms ease,
+    visibility 180ms ease;
   visibility: hidden;
 }
 .studioTraceOpen {
@@ -327,7 +337,7 @@
   border-radius: 2px;
   background: transparent;
   content: "";
-  transition: background 140ms ease;
+  transition: background-color var(--duration-hover) var(--ease-standard);
 }
 .studioResizer:hover::after,
 .studioResizer:focus-visible::after,
@@ -344,7 +354,16 @@
   grid-template-rows: auto minmax(0, 1fr);
   background: #fff;
   color: #202020;
-  font-family: Aptos, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  font-family:
+    Aptos,
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC",
+    "Microsoft YaHei",
+    Arial,
+    sans-serif;
 }
 .studioHeader {
   display: flex;
@@ -687,7 +706,7 @@
   gap: 1px;
   margin-top: 7px;
   opacity: 0;
-  transition: opacity 140ms ease;
+  transition: opacity var(--duration-fast) var(--ease-standard);
 }
 .studioUserMessage .studioMessageActions {
   justify-content: flex-end;
@@ -786,7 +805,9 @@
 }
 .studioComposer :global(.ant-input-textarea:focus-within) {
   border-color: #a9a9a9;
-  box-shadow: 0 0 0 3px rgb(20 20 20 / 6%), 0 5px 22px rgb(20 20 20 / 10%);
+  box-shadow:
+    0 0 0 3px rgb(20 20 20 / 6%),
+    0 5px 22px rgb(20 20 20 / 10%);
 }
 .studioComposer :global(.ant-btn) {
   min-height: 42px;
@@ -1338,7 +1359,12 @@
   padding: 10px 8px;
   text-align: left;
   white-space: normal;
-  transition: none;
+  transition:
+    color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    border-color var(--duration-hover) var(--ease-standard),
+    box-shadow var(--duration-hover) var(--ease-standard),
+    transform var(--duration-press) var(--ease-standard);
 }
 
 .compactAgent:last-child {
@@ -1805,23 +1831,50 @@
   gap: 16px;
 }
 
+.agentListPanel {
+  min-width: 0;
+}
+
 .agentGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
-.agentTile {
+.agentCard {
   min-width: 0;
-  height: auto;
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  border-color: var(--line) !important;
+  border-radius: 10px !important;
   background: #fff;
-  padding: 13px;
-  color: inherit;
-  text-align: left;
-  white-space: normal;
-  transition: none;
+  box-shadow: none !important;
+  transition:
+    color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    border-color var(--duration-hover) var(--ease-standard),
+    box-shadow var(--duration-hover) var(--ease-standard),
+    transform var(--duration-press) var(--ease-standard);
+}
+
+.agentCard :global(.ant-card-body) {
+  padding: 0 !important;
+}
+
+.agentCardAction {
+  height: auto;
+  min-height: 142px;
+  border-radius: 9px !important;
+  padding: 14px !important;
+  color: inherit !important;
+  text-align: left !important;
+  white-space: normal !important;
+}
+
+.agentCardAction:active {
+  transform: none !important;
+}
+
+.agentCard:has(.agentCardAction:active) {
+  transform: scale(0.985);
 }
 
 .agentTileContent {
@@ -1829,19 +1882,19 @@
   width: 100%;
 }
 
-.agentTileActive {
-  border-color: #b3b3b3;
-  background: #f7f7f7;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.025);
+.agentCardActive {
+  border-color: #c9c9c9 !important;
+  background: #f3f3f3;
+  box-shadow: none;
 }
 
-.agentTile header {
+.agentCardAction header {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.agentTile header > b {
+.agentCardAction header > b {
   display: grid;
   width: 31px;
   height: 31px;
@@ -1853,24 +1906,24 @@
   font-size: 12px;
 }
 
-.agentTile header > span:nth-child(2) {
+.agentCardAction header > span:nth-child(2) {
   min-width: 0;
   flex: 1;
 }
 
-.agentTile strong,
-.agentTile small {
+.agentCardAction strong,
+.agentCardAction small {
   display: block;
 }
 
-.agentTile strong {
+.agentCardAction strong {
   overflow: hidden;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.agentTile small {
+.agentCardAction small {
   margin-top: 2px;
   color: #808080;
   font-size: 9px;
@@ -1885,7 +1938,7 @@
   line-height: 1.55;
 }
 
-.agentTile footer {
+.agentCardAction footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1893,7 +1946,7 @@
   padding-top: 9px;
 }
 
-.agentTile footer > span {
+.agentCardAction footer > span {
   color: #7c7c7c;
   font-size: 9px;
 }
@@ -1939,7 +1992,11 @@
   color: #465165;
   text-align: left;
   white-space: normal;
-  transition: none;
+  transition:
+    color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    border-color var(--duration-hover) var(--ease-standard),
+    box-shadow var(--duration-hover) var(--ease-standard);
 }
 
 .operationRow {
@@ -2413,7 +2470,7 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: none;
+  transition: color var(--duration-hover) var(--ease-standard);
 }
 
 .errorLine {
@@ -2809,7 +2866,11 @@
   height: auto;
   padding: 0;
   white-space: normal;
-  transition: none;
+  transition:
+    color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    border-color var(--duration-hover) var(--ease-standard),
+    box-shadow var(--duration-hover) var(--ease-standard);
 }
 
 .settingsRow {
@@ -2881,6 +2942,22 @@
  * default text-button fill is too dark for full-width navigation and data
  * rows, while shadows make dense operational surfaces jump between states.
  */
+.navGroup button :global(.ant-btn-icon),
+.responseTabs button,
+.responseTabs button::after,
+.eventStream summary,
+.eventTimeline summary,
+.revisionList summary,
+.clickableRow td,
+:global(.ant-table-tbody > tr.ant-table-row > td),
+:global(.ant-collapse > .ant-collapse-item > .ant-collapse-header) {
+  transition:
+    color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    border-color var(--duration-hover) var(--ease-standard),
+    box-shadow var(--duration-hover) var(--ease-standard);
+}
+
 @media (hover: hover) and (pointer: fine) {
   .navGroup button:not(.navActive):hover {
     border-color: transparent !important;
@@ -2912,17 +2989,35 @@
     color: inherit !important;
   }
 
-  .agentTile:not(.agentTileActive):hover {
-    border-color: #d8d8d8 !important;
-    background: #fafafa !important;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.02);
-    color: inherit !important;
+  .agentCard:not(.agentCardActive):has(.agentCardAction:hover) {
+    border-color: #cfcfcf !important;
+    background: #f8f8f8;
   }
 
-  .agentTileActive:hover {
-    border-color: #929292 !important;
-    background: #f3f3f3 !important;
-    color: inherit !important;
+  .agentCardActive:has(.agentCardAction:hover) {
+    border-color: #bdbdbd !important;
+    background: #eeeeee;
+  }
+
+  .splitWorkspace
+    .toolbar
+    :global(
+      .ant-input-affix-wrapper:not(.ant-input-affix-wrapper-disabled):hover
+    ),
+  .splitWorkspace .toolbar :global(.ant-input:not(:disabled):hover),
+  .splitWorkspace
+    .toolbar
+    :global(.ant-select:not(.ant-select-disabled):hover .ant-select-selector) {
+    border-color: var(--color-border-default, #d8d8d8) !important;
+    background: var(--color-surface-subtle, #f7f7f7) !important;
+    box-shadow: none !important;
+  }
+
+  .splitWorkspace
+    :global(.ant-btn-default:not(.ant-btn-dangerous):not(:disabled):hover) {
+    border-color: var(--color-border-default, #d8d8d8) !important;
+    background: var(--color-surface-subtle, #f5f5f5) !important;
+    box-shadow: none !important;
   }
 
   .operationList button:hover {

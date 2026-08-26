@@ -5,6 +5,7 @@ import zhCN from "antd/locale/zh_CN";
 import ConsoleApp from "./App";
 import { platformTheme } from "./theme";
 import "antd/dist/reset.css";
+import "./styles/design-tokens.css";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(

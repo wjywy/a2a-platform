@@ -1,8 +1,10 @@
 import {
   lazy,
+  memo,
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -14,64 +16,167 @@ import {
   type Tenant,
   type PlatformUser,
 } from "./api";
-import { AppContextProvider } from "./AppContext";
+import { AppContextProvider, type AppContextValue } from "./AppContext";
 import { Layout, type PageKey } from "./Layout";
 import { PageState, ToastProvider } from "./ui";
 import { useDisclosure, useLocalStorage } from "./hooks";
 import { AuthPage } from "./pages/AuthPage";
+import shellStyles from "./ConsoleShell.module.css";
 
-const OverviewPage = lazy(() =>
-  import("./pages/OverviewPage").then((module) => ({
-    default: module.OverviewPage,
-  })),
+const loadOverviewPage = () => import("./pages/OverviewPage");
+const loadTenantsPage = () => import("./pages/TenantsPage");
+const loadMembersPage = () => import("./pages/MembersPage");
+const loadAgentsPage = () => import("./pages/AgentsPage");
+const loadDebugPage = () => import("./pages/DebugPage");
+const loadTasksPage = () => import("./pages/TasksPage");
+const loadUsagePage = () => import("./pages/UsagePage");
+const loadWebhooksPage = () => import("./pages/WebhooksPage");
+const loadAlertsPage = () => import("./pages/AlertsPage");
+const loadAuditPage = () => import("./pages/AuditPage");
+const loadSettingsPage = () => import("./pages/SettingsPage");
+
+const OverviewPage = memo(
+  lazy(() =>
+    loadOverviewPage().then((module) => ({ default: module.OverviewPage })),
+  ),
 );
-const TenantsPage = lazy(() =>
-  import("./pages/TenantsPage").then((module) => ({
-    default: module.TenantsPage,
-  })),
+const TenantsPage = memo(
+  lazy(() =>
+    loadTenantsPage().then((module) => ({ default: module.TenantsPage })),
+  ),
 );
-const MembersPage = lazy(() =>
-  import("./pages/MembersPage").then((module) => ({
-    default: module.MembersPage,
-  })),
+const MembersPage = memo(
+  lazy(() =>
+    loadMembersPage().then((module) => ({ default: module.MembersPage })),
+  ),
 );
-const AgentsPage = lazy(() =>
-  import("./pages/AgentsPage").then((module) => ({
-    default: module.AgentsPage,
-  })),
+const AgentsPage = memo(
+  lazy(() =>
+    loadAgentsPage().then((module) => ({ default: module.AgentsPage })),
+  ),
 );
 const RegisterAgentModal = lazy(() =>
-  import("./pages/AgentsPage").then((module) => ({
-    default: module.RegisterAgentModal,
-  })),
+  loadAgentsPage().then((module) => ({ default: module.RegisterAgentModal })),
 );
 const DebugPage = lazy(() =>
-  import("./pages/DebugPage").then((module) => ({ default: module.DebugPage })),
+  loadDebugPage().then((module) => ({ default: module.DebugPage })),
 );
-const TasksPage = lazy(() =>
-  import("./pages/TasksPage").then((module) => ({ default: module.TasksPage })),
+const TasksPage = memo(
+  lazy(() =>
+    loadTasksPage().then((module) => ({ default: module.TasksPage })),
+  ),
 );
-const UsagePage = lazy(() =>
-  import("./pages/UsagePage").then((module) => ({ default: module.UsagePage })),
+const UsagePage = memo(
+  lazy(() =>
+    loadUsagePage().then((module) => ({ default: module.UsagePage })),
+  ),
 );
-const WebhooksPage = lazy(() =>
-  import("./pages/WebhooksPage").then((module) => ({
-    default: module.WebhooksPage,
-  })),
+const WebhooksPage = memo(
+  lazy(() =>
+    loadWebhooksPage().then((module) => ({ default: module.WebhooksPage })),
+  ),
 );
-const AlertsPage = lazy(() =>
-  import("./pages/AlertsPage").then((module) => ({
-    default: module.AlertsPage,
-  })),
+const AlertsPage = memo(
+  lazy(() =>
+    loadAlertsPage().then((module) => ({ default: module.AlertsPage })),
+  ),
 );
-const AuditPage = lazy(() =>
-  import("./pages/AuditPage").then((module) => ({ default: module.AuditPage })),
+const AuditPage = memo(
+  lazy(() =>
+    loadAuditPage().then((module) => ({ default: module.AuditPage })),
+  ),
 );
-const SettingsPage = lazy(() =>
-  import("./pages/SettingsPage").then((module) => ({
-    default: module.SettingsPage,
-  })),
+const SettingsPage = memo(
+  lazy(() =>
+    loadSettingsPage().then((module) => ({ default: module.SettingsPage })),
+  ),
 );
+
+type ConsolePageKey = Exclude<PageKey, "debug">;
+
+const consolePageOrder: ConsolePageKey[] = [
+  "overview",
+  "agents",
+  "tasks",
+  "usage",
+  "tenants",
+  "members",
+  "webhooks",
+  "alerts",
+  "audit",
+  "settings",
+];
+
+const pagePreloaders: Record<PageKey, () => Promise<unknown>> = {
+  overview: loadOverviewPage,
+  tenants: loadTenantsPage,
+  members: loadMembersPage,
+  agents: loadAgentsPage,
+  debug: loadDebugPage,
+  tasks: loadTasksPage,
+  usage: loadUsagePage,
+  webhooks: loadWebhooksPage,
+  alerts: loadAlertsPage,
+  audit: loadAuditPage,
+  settings: loadSettingsPage,
+};
+
+function warmPage(page: PageKey) {
+  void pagePreloaders[page]().catch(() => undefined);
+}
+
+const CachedConsolePage = memo(function CachedConsolePage({
+  page,
+  active,
+  onPage,
+  onRegister,
+}: {
+  page: ConsolePageKey;
+  active: boolean;
+  onPage: (page: PageKey) => void;
+  onRegister: () => void;
+}) {
+  const openAgents = useCallback(() => onPage("agents"), [onPage]);
+  const openTasks = useCallback(() => onPage("tasks"), [onPage]);
+  const openAlerts = useCallback(() => onPage("alerts"), [onPage]);
+  const content =
+    page === "overview" ? (
+      <OverviewPage
+        openAgents={openAgents}
+        openTasks={openTasks}
+        openAlerts={openAlerts}
+      />
+    ) : page === "tenants" ? (
+      <TenantsPage />
+    ) : page === "members" ? (
+      <MembersPage />
+    ) : page === "agents" ? (
+      <AgentsPage openRegister={onRegister} />
+    ) : page === "tasks" ? (
+      <TasksPage />
+    ) : page === "usage" ? (
+      <UsagePage />
+    ) : page === "webhooks" ? (
+      <WebhooksPage />
+    ) : page === "alerts" ? (
+      <AlertsPage />
+    ) : page === "audit" ? (
+      <AuditPage />
+    ) : (
+      <SettingsPage />
+    );
+
+  return (
+    <section
+      className={shellStyles.pageCachePane}
+      data-console-page={page}
+      hidden={!active}
+      aria-hidden={!active}
+    >
+      <Suspense fallback={<PageState loading />}>{content}</Suspense>
+    </section>
+  );
+});
 
 const migrateLegacyHashRoute = () => {
   if (location.hash.startsWith("#/")) {
@@ -122,6 +227,13 @@ export default function App() {
     "",
   );
   const [page, setPage] = useState<PageKey>(pageFromLocation);
+  const [visitedConsolePages, setVisitedConsolePages] = useState<
+    Set<ConsolePageKey>
+  >(() =>
+    page === "debug"
+      ? new Set<ConsolePageKey>()
+      : new Set<ConsolePageKey>([page]),
+  );
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [agentPage, setAgentPage] = useState<Page<Agent>>({
@@ -140,6 +252,10 @@ export default function App() {
   const oidcAttempted = useRef(false);
   const invitationToken = invitationTokenFromLocation();
   const register = useDisclosure();
+  const registerActions = useRef({ show: register.show, hide: register.hide });
+  registerActions.current = { show: register.show, hide: register.hide };
+  const showRegister = useCallback(() => registerActions.current.show(), []);
+  const hideRegister = useCallback(() => registerActions.current.hide(), []);
   const refreshTenants = useCallback(async () => {
     if (!token || !user) return { items: [] };
     const items =
@@ -303,15 +419,20 @@ export default function App() {
     };
   }, [token, user, selectedTenantId, refreshAgents]);
   useEffect(() => {
-    const update = () => setPage(pageFromLocation());
+    const update = () => {
+      const next = pageFromLocation();
+      warmPage(next);
+      setPage(next);
+    };
     window.addEventListener("popstate", update);
     return () => window.removeEventListener("popstate", update);
   }, []);
-  const navigate = (next: PageKey) => {
+  const navigate = useCallback((next: PageKey) => {
+    warmPage(next);
     const nextPath = `/${next}`;
     if (location.pathname !== nextPath) history.pushState(null, "", nextPath);
     setPage(next);
-  };
+  }, []);
   const selectedRole = tenants.find(
     (tenant) => tenant.id === selectedTenantId,
   )?.role;
@@ -330,6 +451,20 @@ export default function App() {
       : user?.platformRole !== "platform_admin" && page === "settings"
         ? "overview"
         : page;
+  const cachedPageKeys = useMemo(() => {
+    const mounted = new Set(visitedConsolePages);
+    if (effectivePage !== "debug") mounted.add(effectivePage);
+    return consolePageOrder.filter((key) => mounted.has(key));
+  }, [effectivePage, visitedConsolePages]);
+  useEffect(() => {
+    if (effectivePage === "debug") return;
+    setVisitedConsolePages((previous) => {
+      if (previous.has(effectivePage)) return previous;
+      const next = new Set(previous);
+      next.add(effectivePage);
+      return next;
+    });
+  }, [effectivePage]);
   useEffect(() => {
     if (!user || effectivePage === page) return;
     history.replaceState(null, "", `/${effectivePage}`);
@@ -359,7 +494,7 @@ export default function App() {
     setPage(target);
     setAuthReady(true);
   };
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await platformApi.logout(token);
     } finally {
@@ -371,36 +506,49 @@ export default function App() {
       refreshAttempted.current = true;
       history.replaceState(null, "", "/overview");
       setPage("overview");
+      setVisitedConsolePages(new Set<ConsolePageKey>(["overview"]));
     }
-  };
-  const content =
-    effectivePage === "overview" ? (
-      <OverviewPage
-        openAgents={() => navigate("agents")}
-        openTasks={() => navigate("tasks")}
-        openAlerts={() => navigate("alerts")}
-      />
-    ) : effectivePage === "tenants" ? (
-      <TenantsPage />
-    ) : effectivePage === "members" ? (
-      <MembersPage />
-    ) : effectivePage === "agents" ? (
-      <AgentsPage openRegister={register.show} />
-    ) : effectivePage === "debug" ? (
-      <DebugPage onExitStudio={() => navigate("overview")} />
-    ) : effectivePage === "tasks" ? (
-      <TasksPage />
-    ) : effectivePage === "usage" ? (
-      <UsagePage />
-    ) : effectivePage === "webhooks" ? (
-      <WebhooksPage />
-    ) : effectivePage === "alerts" ? (
-      <AlertsPage />
-    ) : effectivePage === "audit" ? (
-      <AuditPage />
-    ) : (
-      <SettingsPage />
-    );
+  }, [setSelectedTenantId, setToken, token]);
+
+  const appContextValue = useMemo<AppContextValue | undefined>(
+    () =>
+      user
+        ? {
+            token,
+            setToken,
+            user,
+            selectedRole,
+            canWrite,
+            canAdminister,
+            realtimeVersion,
+            logout,
+            tenants,
+            selectedTenantId,
+            setSelectedTenantId,
+            agents,
+            agentPage,
+            refreshTenants,
+            refreshAgents,
+          }
+        : undefined,
+    [
+      agentPage,
+      agents,
+      canAdminister,
+      canWrite,
+      logout,
+      realtimeVersion,
+      refreshAgents,
+      refreshTenants,
+      selectedRole,
+      selectedTenantId,
+      setSelectedTenantId,
+      setToken,
+      tenants,
+      token,
+      user,
+    ],
+  );
   if (!authReady)
     return (
       <div className="appBoot">
@@ -408,7 +556,7 @@ export default function App() {
         正在建立安全会话…
       </div>
     );
-  if (!user)
+  if (!user || !appContextValue)
     return (
       <ToastProvider>
         {authError && <div className="appAuthError">{authError}</div>}
@@ -420,38 +568,34 @@ export default function App() {
     );
   return (
     <ToastProvider>
-      <AppContextProvider
-        value={{
-          token,
-          setToken,
-          user,
-          selectedRole,
-          canWrite,
-          canAdminister,
-          realtimeVersion,
-          logout,
-          tenants,
-          selectedTenantId,
-          setSelectedTenantId,
-          agents,
-          agentPage,
-          refreshTenants,
-          refreshAgents,
-        }}
-      >
+      <AppContextProvider value={appContextValue}>
         <Layout
           page={effectivePage}
           onPage={navigate}
-          onRegister={register.show}
+          onRegister={showRegister}
+          onWarmPage={warmPage}
         >
-          <Suspense fallback={<PageState loading />}>{content}</Suspense>
+          {cachedPageKeys.map((cachedPage) => (
+            <CachedConsolePage
+              key={cachedPage}
+              page={cachedPage}
+              active={effectivePage === cachedPage}
+              onPage={navigate}
+              onRegister={showRegister}
+            />
+          ))}
+          {effectivePage === "debug" && (
+            <Suspense fallback={<PageState loading />}>
+              <DebugPage onExitStudio={() => navigate("overview")} />
+            </Suspense>
+          )}
         </Layout>
         {register.open && (
           <Suspense fallback={null}>
             <RegisterAgentModal
-              close={register.hide}
+              close={hideRegister}
               saved={async () => {
-                register.hide();
+                hideRegister();
                 await refreshAgents();
                 navigate("agents");
               }}

@@ -11,7 +11,8 @@ import {
 } from "@ant-design/icons";
 import { Button, Input, Tooltip } from "antd";
 import type { UIMessage } from "ai";
-import styles from "../../App.module.css";
+import { messageText } from "./studio-utils";
+import styles from "./AgentStudio.module.css";
 
 export type StudioMessageActionHandlers = {
   onCopy: (text: string) => Promise<void> | void;
@@ -21,14 +22,6 @@ export type StudioMessageActionHandlers = {
   onFeedback: (message: UIMessage, rating: -1 | 1) => Promise<void> | void;
   onHistory: (message: UIMessage) => Promise<void> | void;
 };
-
-function messageText(message: UIMessage) {
-  return message.parts
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
-}
 
 /**
  * GPT-style actions deliberately operate on UIMessage ids. The persistence

@@ -129,7 +129,7 @@ export function AgentsPage({ openRegister }: { openRegister: () => void }) {
   return (
     <>
       <div className={styles.splitWorkspace}>
-        <section className={styles.panel}>
+        <section className={styles.agentListPanel}>
           <SectionHeader
             title="Agent 列表"
             description={`${agents.length} 个${canWrite ? "已注册" : "当前可见"}服务`}
@@ -172,31 +172,36 @@ export function AgentsPage({ openRegister }: { openRegister: () => void }) {
           <PageState empty={!visible.length ? "没有匹配的 Agent" : undefined}>
             <div className={styles.agentGrid}>
               {visible.map((agent) => (
-                <Button
-                  type="text"
-                  block
+                <Card
                   key={agent.id}
-                  className={`${styles.agentTile} ${selected?.id === agent.id ? styles.agentTileActive : ""}`}
-                  onClick={() => setSelected(agent)}
+                  variant="outlined"
+                  className={`${styles.agentCard} ${selected?.id === agent.id ? styles.agentCardActive : ""}`}
                 >
-                  <span className={styles.agentTileContent}>
-                    <header>
-                      <b>{agent.displayName.slice(0, 1)}</b>
-                      <span>
-                        <strong>{agent.displayName}</strong>
-                        <small>/{agent.slug}</small>
-                      </span>
-                      <StatusBadge value={agent.status} />
-                    </header>
-                    <p title={agent.description ? undefined : agent.cardUrl}>
-                      {agent.description || agent.cardUrl}
-                    </p>
-                    <footer>
-                      <span>{agent.selectedInterface.protocolBinding}</span>
-                      <StatusBadge value={agent.healthStatus} />
-                    </footer>
-                  </span>
-                </Button>
+                  <Button
+                    type="text"
+                    block
+                    className={styles.agentCardAction}
+                    onClick={() => setSelected(agent)}
+                  >
+                    <span className={styles.agentTileContent}>
+                      <header>
+                        <b>{agent.displayName.slice(0, 1)}</b>
+                        <span>
+                          <strong>{agent.displayName}</strong>
+                          <small>/{agent.slug}</small>
+                        </span>
+                        <StatusBadge value={agent.status} />
+                      </header>
+                      <p title={agent.description ? undefined : agent.cardUrl}>
+                        {agent.description || agent.cardUrl}
+                      </p>
+                      <footer>
+                        <span>{agent.selectedInterface.protocolBinding}</span>
+                        <StatusBadge value={agent.healthStatus} />
+                      </footer>
+                    </span>
+                  </Button>
+                </Card>
               ))}
             </div>
           </PageState>

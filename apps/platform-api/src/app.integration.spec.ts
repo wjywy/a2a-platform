@@ -33,6 +33,7 @@ import {
   forkStudioConversation,
   getStudioConversation,
   listStudioConversationEvents,
+  listStudioMessageRevisions,
   listConversationLabels,
   replaceStudioConversationLabels,
   recordStudioMessageFeedback,
@@ -1197,6 +1198,15 @@ describe("generic Agent Studio conversation persistence", () => {
     expect(branch.messages[0].content).toContain("风险");
     expect(branch.messages[0].id).not.toBe(question.id);
     expect(branch.messages[0].sequence).toBe(1);
+    await expect(
+      listStudioMessageRevisions(
+        branch.id,
+        branch.messages[0].id,
+        tenant.id,
+      ),
+    ).resolves.toMatchObject([
+      { revision: 1, content: "分析 AAPL 的价格与新闻" },
+    ]);
 
     const feedback = await recordStudioMessageFeedback(
       source.id,

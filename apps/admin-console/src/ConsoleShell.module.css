@@ -1,0 +1,698 @@
+.shell {
+  --shell-sidebar-width: var(--console-sidebar-width, 232px);
+  min-width: 0;
+  min-height: 100dvh;
+  color: var(--color-text-primary);
+  background: var(--color-surface-layout);
+}
+
+.sidebar {
+  position: fixed;
+  z-index: 30;
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  width: var(--shell-sidebar-width);
+  min-width: 0;
+  padding: 14px 10px 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--color-text-primary);
+  background: var(--color-sidebar-background);
+  border-right: 1px solid transparent;
+  scrollbar-color: rgb(33 33 33 / 16%) transparent;
+  scrollbar-width: thin;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 48px;
+  gap: 9px;
+  padding: 2px 8px 10px;
+  color: var(--color-text-primary);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
+}
+
+.brand > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand small {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-sans);
+  font-size: 8px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.12em;
+  text-overflow: ellipsis;
+}
+
+.brandMark {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--color-action-on-primary);
+  background: var(--color-action-primary);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: var(--font-weight-bold);
+}
+
+.sidebarPrimary {
+  justify-content: flex-start !important;
+  width: 100%;
+  min-height: 40px;
+  margin: 0 0 12px;
+  padding-inline: 12px !important;
+  color: var(--color-text-primary) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: var(--radius-md) !important;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  box-shadow: none !important;
+}
+
+.sidebarPrimary :global(.anticon) {
+  color: var(--color-icon-secondary);
+  font-size: 14px;
+}
+
+.sidebar nav {
+  min-width: 0;
+}
+
+.navGroup {
+  min-width: 0;
+  margin: 2px 0 12px;
+}
+
+.navGroup > span {
+  display: block;
+  padding: 6px 10px 4px;
+  color: var(--color-text-tertiary);
+  font-size: 9px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+}
+
+.navGroup :global(.ant-btn) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  gap: 9px;
+  padding-inline: 11px !important;
+  overflow: hidden;
+  color: var(--color-text-secondary) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: var(--radius-md) !important;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: none !important;
+  transition:
+    color var(--duration-hover) var(--ease-standard),
+    background-color var(--duration-hover) var(--ease-standard),
+    transform var(--duration-press) var(--ease-standard) !important;
+}
+
+.navGroup :global(.ant-btn-icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex: 0 0 18px;
+  margin-inline-end: 0 !important;
+  color: var(--color-icon-secondary);
+  font-size: 13px;
+}
+
+.navGroup :global(.ant-btn > span:last-child) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navGroup .navActive {
+  color: var(--color-text-primary) !important;
+  background: var(--color-sidebar-selected) !important;
+  font-weight: var(--font-weight-semibold);
+}
+
+.navGroup .navActive :global(.ant-btn-icon) {
+  color: var(--color-icon-primary);
+}
+
+.sidebarFooter {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  margin-top: auto;
+  padding: 12px 4px 0;
+  border-top: 1px solid var(--color-border-faint);
+}
+
+.tenantSelector {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.tenantSelector :global(.ant-typography) {
+  padding-inline: 4px;
+  color: var(--color-text-tertiary) !important;
+  font-size: 9px;
+}
+
+.tenantSelector :global(.ant-select) {
+  width: 100%;
+  min-width: 0;
+}
+
+.tenantSelector :global(.ant-select-selector) {
+  min-height: 34px !important;
+  padding-inline: 9px !important;
+  background: var(--color-surface-canvas) !important;
+  border-color: var(--color-border-faint) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: none !important;
+}
+
+.tenantSelector :global(.ant-select-selection-item) {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+}
+
+.catalogScope {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-md);
+}
+
+.catalogScope span {
+  color: var(--color-text-tertiary);
+  font-size: 9px;
+}
+
+.catalogScope b {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  min-height: 42px;
+  gap: 8px;
+  padding: 5px 3px 2px;
+}
+
+.account :global(.ant-avatar) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.account > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account small {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  font-size: 8px;
+  font-weight: var(--font-weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account :global(.ant-btn) {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--color-icon-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+}
+
+.main {
+  width: auto;
+  min-width: 0;
+  min-height: 100dvh;
+  margin-left: var(--shell-sidebar-width);
+  overflow-x: clip;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: var(--console-topbar-height);
+  gap: 24px;
+  padding: 15px clamp(20px, 3vw, 36px);
+  background: var(--color-surface-canvas);
+  border-bottom: 1px solid var(--color-border-faint);
+}
+
+.topbar > div:first-child {
+  min-width: 0;
+}
+
+.topbar p {
+  margin: 0 0 2px;
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  font-size: 9px;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar h1 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-family: var(--font-display);
+  font-size: clamp(20px, 2.3vw, 24px);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar > div:first-child > span {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbarActions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.topbarActions :global(.ant-badge-status-text) {
+  color: var(--color-text-secondary) !important;
+  font-size: var(--font-size-xs);
+}
+
+.topbarActions :global(.ant-btn) {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--color-icon-secondary);
+  background: var(--color-surface-canvas);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.pageBody {
+  width: min(100%, var(--console-content-width));
+  min-width: 0;
+  margin: 0 auto;
+  padding: 22px clamp(20px, 3vw, 36px) 48px;
+}
+
+.pageCachePane {
+  min-width: 0;
+  contain: layout style;
+}
+
+.pageCachePane[hidden] {
+  display: none !important;
+}
+
+.pageBody > :last-child {
+  margin-bottom: 0;
+}
+
+.mobileNav {
+  display: none;
+}
+
+.debugShell {
+  min-height: 100dvh;
+  background: var(--color-surface-canvas);
+}
+
+.debugShell .sidebar,
+.debugShell .topbar,
+.debugShell .mobileNav {
+  display: none !important;
+}
+
+.debugShell .main {
+  width: 100%;
+  min-width: 0;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.debugShell .pageBody {
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.debugShell .pageCachePane {
+  width: 100%;
+  height: 100%;
+}
+
+:global(.ant-tooltip .ant-tooltip-container) {
+  border: 1px solid var(--color-border-subtle) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sidebarPrimary:hover,
+  .navGroup :global(.ant-btn:not(.navActive):hover),
+  .account :global(.ant-btn:hover) {
+    color: var(--color-text-primary) !important;
+    background: var(--color-sidebar-hover) !important;
+  }
+
+  .topbarActions :global(.ant-btn:hover) {
+    color: var(--color-text-primary) !important;
+    background: var(--color-surface-subtle) !important;
+    border-color: var(--color-border-default) !important;
+  }
+}
+
+.sidebarPrimary:focus-visible,
+.navGroup :global(.ant-btn:focus-visible),
+.account :global(.ant-btn:focus-visible),
+.topbarActions :global(.ant-btn:focus-visible),
+.mobileNav :global(.ant-btn:focus-visible) {
+  outline: 2px solid var(--color-focus-ring) !important;
+  outline-offset: 2px !important;
+}
+
+.sidebarPrimary:not(:disabled):active,
+.navGroup :global(.ant-btn:not(:disabled):active),
+.account :global(.ant-btn:not(:disabled):active),
+.topbarActions :global(.ant-btn:not(:disabled):active) {
+  transform: scale(0.96);
+}
+
+@media (max-width: 1080px) {
+  .shell {
+    --shell-sidebar-width: var(--console-sidebar-compact-width, 208px);
+  }
+
+  .sidebar {
+    padding-inline: 8px;
+  }
+
+  .pageBody,
+  .topbar {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    --shell-sidebar-width: 0px;
+    min-height: 100dvh;
+    padding-bottom: calc(64px + var(--safe-bottom));
+    background: var(--color-surface-layout);
+  }
+
+  .sidebar {
+    position: sticky;
+    z-index: 30;
+    top: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    max-width: 100vw;
+    height: calc(56px + var(--safe-top));
+    min-height: calc(56px + var(--safe-top));
+    padding: var(--safe-top) 10px 0;
+    overflow: hidden;
+    background: var(--color-surface-canvas);
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border-faint);
+  }
+
+  .brand {
+    min-width: 0;
+    min-height: 48px;
+    flex: 1 1 auto;
+    padding: 0 6px;
+  }
+
+  .brand small,
+  .sidebar nav,
+  .sidebarFooter {
+    display: none;
+  }
+
+  .brandMark {
+    width: 28px;
+    height: 28px;
+  }
+
+  .sidebarPrimary {
+    width: auto;
+    min-width: 44px;
+    max-width: min(150px, 46vw);
+    min-height: 40px;
+    flex: 0 1 auto;
+    margin: 0;
+    padding-inline: 10px !important;
+    overflow: hidden;
+    background: var(--color-action-primary) !important;
+    color: var(--color-action-on-primary) !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebarPrimary :global(.anticon) {
+    color: inherit;
+  }
+
+  .main {
+    width: 100%;
+    max-width: 100vw;
+    min-height: 0;
+    margin-left: 0;
+    overflow-x: clip;
+  }
+
+  .topbar {
+    min-height: var(--console-topbar-height);
+    gap: 12px;
+    padding: 11px 14px;
+  }
+
+  .topbar h1 {
+    font-size: 19px;
+  }
+
+  .topbar > div:first-child > span {
+    max-width: calc(100vw - 28px);
+  }
+
+  .topbarActions {
+    display: none;
+  }
+
+  .pageBody {
+    width: 100%;
+    max-width: 100vw;
+    padding: 14px 12px calc(20px + var(--safe-bottom));
+    overflow-x: clip;
+  }
+
+  .mobileNav {
+    position: fixed;
+    z-index: 50;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    width: 100%;
+    max-width: 100vw;
+    height: calc(58px + var(--safe-bottom));
+    padding: 0 4px var(--safe-bottom);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    color: var(--color-text-tertiary);
+    background: color-mix(
+      in srgb,
+      var(--color-surface-canvas) 96%,
+      transparent
+    );
+    border-top: 1px solid var(--color-border-faint);
+    backdrop-filter: blur(14px);
+    scrollbar-width: none;
+  }
+
+  .mobileNav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobileNav :global(.ant-btn) {
+    display: grid;
+    grid-template-rows: 19px 12px;
+    align-content: center;
+    justify-items: center;
+    width: 64px;
+    min-width: 64px;
+    height: 56px;
+    flex: 0 0 64px;
+    gap: 2px;
+    padding: 5px 2px !important;
+    color: var(--color-text-tertiary) !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: none !important;
+  }
+
+  .mobileNav :global(.anticon) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 19px;
+    margin: 0 !important;
+    font-size: 15px;
+  }
+
+  .mobileNav :global(.ant-btn > span:last-child) {
+    max-width: 60px;
+    overflow: hidden;
+    font-size: 8px;
+    line-height: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileNav .mobileActive {
+    color: var(--color-text-primary) !important;
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .mobileNav .mobileActive::after {
+    position: absolute;
+    top: 4px;
+    width: 18px;
+    height: 2px;
+    background: var(--color-text-primary);
+    border-radius: var(--radius-round);
+    content: "";
+  }
+
+  .debugShell {
+    padding: 0;
+  }
+
+  .debugShell .main,
+  .debugShell .pageBody {
+    width: 100%;
+    max-width: 100vw;
+    height: 100dvh;
+  }
+}
+
+@media (max-width: 380px) {
+  .brand {
+    font-size: 14px;
+  }
+
+  .sidebarPrimary {
+    max-width: 132px;
+    font-size: 10px;
+  }
+
+  .mobileNav :global(.ant-btn) {
+    width: 60px;
+    min-width: 60px;
+    flex-basis: 60px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebarPrimary,
+  .navGroup :global(.ant-btn),
+  .mobileNav :global(.ant-btn) {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .sidebar,
+  .topbar,
+  .mobileNav {
+    border-color: CanvasText;
+  }
+
+  .navActive,
+  .mobileActive {
+    outline: 1px solid Highlight;
+  }
+}
