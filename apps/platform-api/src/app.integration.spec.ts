@@ -41,6 +41,12 @@ import {
   updateStudioConversation,
   updateStudioMessage,
 } from "./studio-conversation-service.js";
+import {
+  ensureSymbolBuiltinAgents,
+  legacyMarketAgentCardUrl,
+  legacyMarketAgentSlug,
+} from "./symbol-bootstrap.js";
+import { decryptCredential } from "./credential-service.js";
 
 const admin = "Bearer dev-admin-token";
 const unique = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -162,6 +168,139 @@ afterAll(async () => {
       createdUserIds,
     ]);
   await pool.end();
+});
+
+describe("bundled Agent runtime migration", () => {
+  it("rewires the known legacy market Card to the platform-owned Symbol runtime", async () => {
+    const previousToken = config.symbolInternalToken;
+    const internalToken = `integration-symbol-${unique}`;
+    config.symbolInternalToken = internalToken;
+    try {
+      const tenant = await query<{ id: string }>(
+        "SELECT id FROM tenants WHERE slug='default' AND status='active'",
+      );
+      expect(tenant[0]).toBeDefined();
+      const legacyCard = {
+        name: "市场研究员",
+        description: "legacy external market runtime",
+        version: "1.0.0",
+        capabilities: { streaming: true },
+        supportedInterfaces: [
+          {
+            url: "https://traestockh2cr.vercel.app/api/a2a/market",
+            protocolBinding: "HTTP+JSON",
+            protocolVersion: "1.0",
+            tenant: "",
+          },
+        ],
+      };
+      const agent = await query<{ id: string }>(
+        `INSERT INTO agents(slug,display_name,description,card_url,card_snapshot,selected_interface,status,health_status,
+           labels,tenant_id,visibility,allowed_tenant_ids,invocation_policy)
+         VALUES($1,'市场研究员','legacy external market runtime',$2,$3,$4,'degraded','unhealthy','[]',$5,'public','[]',$6)
+        RETURNING id`,
+        [
+          legacyMarketAgentSlug,
+          legacyMarketAgentCardUrl,
+          JSON.stringify(legacyCard),
+          JSON.stringify(legacyCard.supportedInterfaces[0]),
+          tenant[0].id,
+          JSON.stringify({
+            timeoutMs: 60_000,
+            maxRetries: 0,
+            maxConcurrent: 20,
+          }),
+        ],
+      );
+      createdAgentIds.push(agent[0].id);
+      await query(
+        `INSERT INTO agent_instances(agent_id,name,card_url,selected_interface,status,health_status)
+         VALUES($1,'default',$2,$3,'active','unhealthy')`,
+        [
+          agent[0].id,
+          legacyMarketAgentCardUrl,
+          JSON.stringify(legacyCard.supportedInterfaces[0]),
+        ],
+      );
+      await query(
+        `INSERT INTO agent_instances(agent_id,name,card_url,selected_interface,status,health_status)
+         VALUES($1,'legacy-secondary',$2,$3,'active','healthy')`,
+        [
+          agent[0].id,
+          "https://legacy-secondary.example/.well-known/agent-card.json",
+          JSON.stringify({
+            ...legacyCard.supportedInterfaces[0],
+            url: "https://legacy-secondary.example/api/a2a/market",
+          }),
+        ],
+      );
+
+      await ensureSymbolBuiltinAgents();
+
+      const expectedCardUrl = `${config.platformOrigin}/api/builtin/symbol/symbol-market/.well-known/agent-card.json`;
+      const migrated = await query<{
+        card_url: string;
+        status: string;
+        health_status: string;
+        selected_interface: { url: string };
+      }>(
+        "SELECT card_url,status,health_status,selected_interface FROM agents WHERE id=$1",
+        [agent[0].id],
+      );
+      expect(migrated[0]).toMatchObject({
+        card_url: expectedCardUrl,
+        status: "online",
+        health_status: "healthy",
+        selected_interface: {
+          url: `${config.platformOrigin}/api/builtin/symbol/symbol-market`,
+        },
+      });
+      const instance = await query<{
+        name: string;
+        card_url: string;
+        status: string;
+        health_status: string;
+        credential_ciphertext: string | null;
+        credential_iv: string | null;
+        credential_tag: string | null;
+        credential_key_version: string | null;
+      }>(
+        `SELECT name,card_url,status,health_status,credential_ciphertext,credential_iv,credential_tag,credential_key_version
+         FROM agent_instances WHERE agent_id=$1 AND name='default'`,
+        [agent[0].id],
+      );
+      expect(instance[0]).toMatchObject({
+        name: "default",
+        card_url: expectedCardUrl,
+        status: "active",
+        health_status: "healthy",
+      });
+      expect(
+        decryptCredential({
+          credentialCiphertext: instance[0].credential_ciphertext,
+          credentialIv: instance[0].credential_iv,
+          credentialTag: instance[0].credential_tag,
+          credentialKeyVersion: instance[0].credential_key_version,
+        }),
+      ).toEqual({ type: "bearer", token: internalToken });
+      const retired = await query<{
+        status: string;
+        health_status: string;
+        last_error: string | null;
+      }>(
+        `SELECT status,health_status,last_error FROM agent_instances
+         WHERE agent_id=$1 AND name='legacy-secondary'`,
+        [agent[0].id],
+      );
+      expect(retired[0]).toMatchObject({
+        status: "disabled",
+        health_status: "unhealthy",
+        last_error: "已迁移至平台内置 Symbol 市场 Agent。",
+      });
+    } finally {
+      config.symbolInternalToken = previousToken;
+    }
+  });
 });
 
 describe("admin authentication and tenant lifecycle", () => {
