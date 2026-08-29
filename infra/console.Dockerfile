@@ -1,7 +1,8 @@
 FROM node:22-alpine AS build
 WORKDIR /app
-# See platform.Dockerfile: server-side builds run on a small production host.
-ENV NODE_OPTIONS=--max-old-space-size=512
+# This build runs on the GitHub release runner, not the 1.8 GiB production
+# host. Vite's optimized production graph exceeds Node's 512 MiB default heap.
+ENV NODE_OPTIONS=--max-old-space-size=2048
 COPY package.json ./
 COPY apps/platform-api/package.json apps/platform-api/package.json
 COPY apps/admin-console/package.json apps/admin-console/package.json
