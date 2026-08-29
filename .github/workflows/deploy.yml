@@ -87,7 +87,16 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          scp "$RUNNER_TEMP/a2a-platform-images.tar" \
+          # A failed TCP stream used to leave scp blocked indefinitely, which
+          # in turn held the production deployment concurrency lock forever.
+          # Keep the transfer observable and fail it deterministically so a
+          # later push can recover the release pipeline.
+          timeout --preserve-status 12m scp \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=4 \
+            "$RUNNER_TEMP/a2a-platform-images.tar" \
             "$DEPLOY_USER@$DEPLOY_HOST:/tmp/a2a-platform-images.tar"
 
       - name: Deploy
