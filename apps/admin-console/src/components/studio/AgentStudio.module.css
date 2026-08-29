@@ -603,8 +603,7 @@
   font-size: 12px;
 }
 
-.historyEmpty,
-.historyLoading {
+.historyEmpty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -639,11 +638,6 @@
   margin: 5px 0 0;
   font-size: 10px;
   line-height: 1.5;
-}
-
-.historyLoading {
-  gap: 8px;
-  font-size: 11px;
 }
 
 .historyPagination {
