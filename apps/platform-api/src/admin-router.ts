@@ -127,6 +127,7 @@ import {
   createUser,
   listUsers,
   resetPassword,
+  setUserPlatformRole,
   setUserStatus,
 } from "./identity-service.js";
 import {
@@ -346,6 +347,24 @@ router.post(
       type: "user",
       id: user.id,
     });
+    res.json({ user });
+  }),
+);
+router.patch(
+  "/users/:userId/platform-role",
+  requirePlatformAdmin,
+  asyncHandler(async (req, res) => {
+    const user = await setUserPlatformRole(id(req, "userId"), req.body);
+    await writeAudit(
+      auditContext(req),
+      user.platformRole === "platform_admin"
+        ? "user.platform_admin_granted"
+        : "user.platform_admin_revoked",
+      {
+        type: "user",
+        id: user.id,
+      },
+    );
     res.json({ user });
   }),
 );

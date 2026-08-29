@@ -17,6 +17,7 @@ const adminHeaders = {
   Authorization: "Bearer dev-admin-token",
   "Content-Type": "application/json",
 };
+const testApiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:8080";
 
 test("self-registered customer can sign up, browse the safe public catalog, and log in again", async ({
   page,
@@ -652,4 +653,71 @@ test("Agent cards remain single-column and touch-safe on mobile", async ({
     path: path.join(screenshotDirectory, "mobile-agent-card-grid.png"),
     fullPage: true,
   });
+});
+
+test("platform admin can assign an existing user as a platform administrator", async ({
+  page,
+  request,
+}, testInfo) => {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const email = `e2e-platform-role-${suffix}@example.test`;
+  const password = "E2e-Platform-Role!2026";
+  let userId = "";
+  try {
+    const create = await request.post(`${testApiBaseUrl}/api/admin/users`, {
+      headers: adminHeaders,
+      data: {
+        email,
+        displayName: "Existing Login User",
+        password,
+      },
+    });
+    expect(create.ok()).toBeTruthy();
+    userId = (await create.json()).user.id as string;
+
+    const login = await request.post(`${testApiBaseUrl}/api/auth/login`, {
+      data: { email, password },
+    });
+    expect(login.ok()).toBeTruthy();
+
+    await page.goto("/members");
+    await expect(page.getByRole("heading", { name: "成员与角色" })).toBeVisible();
+    const row = page.locator("tr", { hasText: email });
+    await expect(row).toContainText("普通用户");
+    await row.getByRole("button", { name: "设为管理员" }).click();
+    await expect(page.getByRole("dialog")).toContainText("设为平台管理员");
+    const confirm = page.getByRole("button", { name: "确认授予" });
+    await confirm.click();
+    await expect(row).toContainText("平台管理员");
+    await expect(page.getByText("已授予平台管理员权限")).toBeVisible();
+    const viewport = await page.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: innerWidth,
+    }));
+    expect(viewport.documentWidth).toBeLessThanOrEqual(viewport.viewportWidth + 1);
+    const screenshotDirectory = path.join(
+      process.cwd(),
+      "artifacts",
+      "platform-role-management",
+    );
+    await mkdir(screenshotDirectory, { recursive: true });
+    await page.screenshot({
+      path: path.join(
+        screenshotDirectory,
+        `platform-admin-grant-${testInfo.project.name}.png`,
+      ),
+      fullPage: true,
+    });
+  } finally {
+    if (userId) {
+      await request.patch(
+        `${testApiBaseUrl}/api/admin/users/${userId}/platform-role`,
+        { headers: adminHeaders, data: { platformRole: null } },
+      );
+      await request.post(
+        `${testApiBaseUrl}/api/admin/users/${userId}/status`,
+        { headers: adminHeaders, data: { status: "disabled" } },
+      );
+    }
+  }
 });

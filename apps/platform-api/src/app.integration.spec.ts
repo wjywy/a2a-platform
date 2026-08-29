@@ -213,6 +213,60 @@ describe("admin authentication and tenant lifecycle", () => {
     ).rejects.toMatchObject({ code: "OIDC_EMAIL_NOT_VERIFIED" });
   });
 
+  it("grants and revokes platform administration for an existing logged-in user", async () => {
+    const user = await createUser({
+      email: `role-change-${unique}@example.com`,
+      displayName: "Existing Logged-in User",
+      password: "safe-role-change-password-123",
+    });
+    createdUserIds.push(user.id);
+    const tokens = await issueTokenPair(user, {});
+    const app = createApp();
+
+    const beforeGrant = await request(app)
+      .get("/api/admin/users")
+      .set("Authorization", `Bearer ${tokens.accessToken}`);
+    expect(beforeGrant.status).toBe(403);
+
+    const granted = await request(app)
+      .patch(`/api/admin/users/${user.id}/platform-role`)
+      .set("Authorization", admin)
+      .send({ platformRole: "platform_admin" });
+    expect(granted.status).toBe(200);
+    expect(granted.body.user.platformRole).toBe("platform_admin");
+
+    const activeSessionsAfterGrant = await query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM auth_sessions
+       WHERE user_id=$1 AND revoked_at IS NULL`,
+      [user.id],
+    );
+    expect(activeSessionsAfterGrant[0]?.count).toBe("1");
+
+    const grantedWithExistingAccessToken = await request(app)
+      .get("/api/admin/users")
+      .set("Authorization", `Bearer ${tokens.accessToken}`);
+    expect(grantedWithExistingAccessToken.status).toBe(200);
+
+    const revoked = await request(app)
+      .patch(`/api/admin/users/${user.id}/platform-role`)
+      .set("Authorization", admin)
+      .send({ platformRole: null });
+    expect(revoked.status).toBe(200);
+    expect(revoked.body.user.platformRole).toBeUndefined();
+
+    const activeSessionsAfterRevoke = await query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM auth_sessions
+       WHERE user_id=$1 AND revoked_at IS NULL`,
+      [user.id],
+    );
+    expect(activeSessionsAfterRevoke[0]?.count).toBe("0");
+
+    const afterRevoke = await request(app)
+      .get("/api/admin/users")
+      .set("Authorization", `Bearer ${tokens.accessToken}`);
+    expect(afterRevoke.status).toBe(403);
+  });
+
   it("lets a verified OIDC identity reclaim an unverified self-registration", async () => {
     const email = `oidc-reclaim-${unique}@example.com`;
     const local = await createUser(
@@ -392,9 +446,8 @@ describe("self registration and the safe Agent catalog", () => {
     const oldSession = await request(createApp())
       .get("/api/auth/me")
       .set("Authorization", `Bearer ${registration.body.accessToken}`);
-    expect(oldSession.status).toBe(200);
-    expect(oldSession.body.user.status).toBe("disabled");
-    expect(oldSession.body.tenants).toEqual([]);
+    expect(oldSession.status).toBe(401);
+    expect(oldSession.body.error.code).toBe("USER_DISABLED");
     const newSession = await request(createApp())
       .get("/api/auth/me")
       .set("Authorization", `Bearer ${activation.body.accessToken}`);

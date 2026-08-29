@@ -68,6 +68,8 @@ export function MembersPage() {
     [token, user.platformRole],
   );
   const [remove, setRemove] = useState<TenantMember>();
+  const [platformRoleChange, setPlatformRoleChange] = useState<PlatformUser>();
+  const [userActionId, setUserActionId] = useState<string>();
   const toast = useToast();
   const role = async (member: TenantMember, next: TenantMember["role"]) => {
     try {
@@ -78,6 +80,19 @@ export function MembersPage() {
       await state.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "角色更新失败");
+    }
+  };
+  const changeUserStatus = async (item: PlatformUser) => {
+    const nextStatus = item.status === "active" ? "disabled" : "active";
+    setUserActionId(item.id);
+    try {
+      await platformApi.userStatus(token, item.id, nextStatus);
+      toast.success(nextStatus === "active" ? "用户已启用" : "用户已停用");
+      await users.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "用户状态更新失败");
+    } finally {
+      setUserActionId(undefined);
     }
   };
   return (
@@ -273,7 +288,7 @@ export function MembersPage() {
         <section className={styles.panel}>
           <SectionHeader
             title="平台用户"
-            description="平台管理员账号与登录状态"
+            description="可为已有登录用户授予或撤销平台管理员权限"
             actions={
               <Button
                 type="primary"
@@ -316,7 +331,8 @@ export function MembersPage() {
                 {
                   title: "平台角色",
                   dataIndex: "platformRole",
-                  render: (value) => value ?? "租户用户",
+                  render: (value) =>
+                    value === "platform_admin" ? "平台管理员" : "普通用户",
                 },
                 {
                   title: "状态",
@@ -332,21 +348,25 @@ export function MembersPage() {
                 {
                   title: "操作",
                   render: (_, item) => (
-                    <Button
-                      size="small"
-                      disabled={item.id === user.id}
-                      onClick={() =>
-                        void platformApi
-                          .userStatus(
-                            token,
-                            item.id,
-                            item.status === "active" ? "disabled" : "active",
-                          )
-                          .then(() => users.refresh())
-                      }
-                    >
-                      {item.status === "active" ? "停用" : "启用"}
-                    </Button>
+                    <Space size={4} wrap>
+                      <Button
+                        size="small"
+                        disabled={item.id === user.id}
+                        onClick={() => setPlatformRoleChange(item)}
+                      >
+                        {item.platformRole === "platform_admin"
+                          ? "撤销管理员"
+                          : "设为管理员"}
+                      </Button>
+                      <Button
+                        size="small"
+                        loading={userActionId === item.id}
+                        disabled={item.id === user.id || Boolean(userActionId)}
+                        onClick={() => void changeUserStatus(item)}
+                      >
+                        {item.status === "active" ? "停用" : "启用"}
+                      </Button>
+                    </Space>
                   ),
                 },
               ]}
@@ -369,6 +389,38 @@ export function MembersPage() {
           close={createUser.hide}
           saved={async () => {
             createUser.hide();
+            await users.refresh();
+          }}
+        />
+      )}
+      {platformRoleChange && (
+        <ConfirmDialog
+          title={
+            platformRoleChange.platformRole === "platform_admin"
+              ? "撤销平台管理员"
+              : "设为平台管理员"
+          }
+          danger={platformRoleChange.platformRole === "platform_admin"}
+          confirmText={
+            platformRoleChange.platformRole === "platform_admin"
+              ? "确认撤销"
+              : "确认授予"
+          }
+          message={
+            platformRoleChange.platformRole === "platform_admin"
+              ? `确认撤销“${platformRoleChange.displayName || platformRoleChange.email}”的平台管理员权限？下一次请求将不再拥有平台权限，且其会话刷新凭据会被撤销。`
+              : `确认将“${platformRoleChange.displayName || platformRoleChange.email}”设为平台管理员？权限会在下一次请求生效，重新进入控制台后即可看到平台管理菜单。`
+          }
+          onClose={() => setPlatformRoleChange(undefined)}
+          onConfirm={async () => {
+            const granting =
+              platformRoleChange.platformRole !== "platform_admin";
+            await platformApi.userPlatformRole(
+              token,
+              platformRoleChange.id,
+              granting ? "platform_admin" : null,
+            );
+            toast.success(granting ? "已授予平台管理员权限" : "已撤销平台管理员权限");
             await users.refresh();
           }}
         />

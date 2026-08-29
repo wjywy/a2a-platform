@@ -1339,6 +1339,19 @@ export const platformApi = {
         body: json({ status }),
       },
     ).then((x) => x.user),
+  userPlatformRole: (
+    token: string,
+    userId: string,
+    platformRole: "platform_admin" | null,
+  ) =>
+    request<{ user: PlatformUser }>(
+      `/api/admin/users/${encodeURIComponent(userId)}/platform-role`,
+      token,
+      {
+        method: "PATCH",
+        body: json({ platformRole }),
+      },
+    ).then((x) => x.user),
   resetUserPassword: (token: string, userId: string, password: string) =>
     request<void>(
       `/api/admin/users/${encodeURIComponent(userId)}/password`,

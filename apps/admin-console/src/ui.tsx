@@ -1,4 +1,5 @@
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -250,11 +251,16 @@ export function ConfirmDialog({
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const submit = async () => {
+    if (busy) return;
+    setError("");
     setBusy(true);
     try {
       await onConfirm();
       onClose();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "操作失败，请重试。");
     } finally {
       setBusy(false);
     }
@@ -265,11 +271,16 @@ export function ConfirmDialog({
       title={title}
       okText={confirmText}
       cancelText="取消"
+      closable={!busy}
+      keyboard={!busy}
+      maskClosable={!busy}
+      cancelButtonProps={{ disabled: busy }}
       okButtonProps={{ danger, loading: busy }}
       onOk={() => void submit()}
       onCancel={onClose}
     >
       <Typography.Paragraph>{message}</Typography.Paragraph>
+      {error && <Alert type="error" showIcon message={error} />}
     </AntModal>
   );
 }

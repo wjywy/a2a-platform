@@ -1,6 +1,7 @@
 import crypto, { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { config } from "./config.js";
+import { query } from "./db.js";
 import {
   AppError,
   ForbiddenError,
@@ -23,6 +24,13 @@ export type AuthenticatedRequest = Request & {
   requestId?: string;
   tenantRole?: TenantMemberRole;
   auditTenantId?: string;
+};
+
+type CurrentUserRow = {
+  email: string;
+  display_name: string;
+  platform_role: "platform_admin" | null;
+  status: "active" | "disabled";
 };
 
 type JwtClaims = {
@@ -139,11 +147,33 @@ export function authenticate(
   }
 }
 
-export function requireAuthentication(
+async function resolveCurrentPrincipal(
+  principal: Principal,
+): Promise<Principal> {
+  const rows = await query<CurrentUserRow>(
+    `SELECT email,display_name,platform_role,status
+     FROM platform_users WHERE id=$1`,
+    [principal.id],
+  );
+  const user = rows[0];
+  // Service-to-service tokens created before the customer identity rollout do
+  // not have a platform_users record. Keep their existing claims intact.
+  if (!user) return principal;
+  if (user.status !== "active")
+    throw new UnauthorizedError("USER_DISABLED", "用户已被停用。");
+  return {
+    ...principal,
+    email: user.email,
+    displayName: user.display_name,
+    platformRole: user.platform_role ?? undefined,
+  };
+}
+
+export async function requireAuthentication(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
-): void {
+): Promise<void> {
   try {
     const token = req.header("authorization")?.replace(/^Bearer\s+/i, "");
     if (!token)
@@ -158,7 +188,7 @@ export function requireAuthentication(
             displayName: "本地平台管理员",
             platformRole: "platform_admin",
           }
-        : verifyAccessToken(token);
+        : await resolveCurrentPrincipal(verifyAccessToken(token));
     next();
   } catch (error) {
     const appError =

@@ -35,6 +35,9 @@ export const createUserSchema = z.object({
   password: passwordSchema.optional(),
   platformRole: z.literal("platform_admin").nullable().optional(),
 });
+export const updatePlatformRoleSchema = z.object({
+  platformRole: z.literal("platform_admin").nullable(),
+});
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(256),
@@ -308,21 +311,133 @@ export async function listUsers(): Promise<PlatformUser[]> {
   return rows.map(mapUser);
 }
 
+async function revokeUserSessions(
+  userId: string,
+  client?: PoolClient,
+): Promise<void> {
+  const sql =
+    "UPDATE auth_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL";
+  if (client) await client.query(sql, [userId]);
+  else await query(sql, [userId]);
+}
+
+async function lockActivePlatformAdministrators(client: PoolClient): Promise<
+  Array<{ id: string }>
+> {
+  const result = await client.query<{ id: string }>(
+    `SELECT id FROM platform_users
+     WHERE platform_role='platform_admin' AND status='active'
+     ORDER BY id
+     FOR UPDATE`,
+  );
+  return result.rows;
+}
+
+function assertPlatformAdministrationRetained(input: {
+  user: UserRow;
+  activeAdministratorIds: Array<{ id: string }>;
+  nextPlatformRole: "platform_admin" | null;
+  nextStatus: "active" | "disabled";
+}): void {
+  const removesLastActiveAdministrator =
+    input.user.platform_role === "platform_admin" &&
+    input.user.status === "active" &&
+    (input.nextPlatformRole !== "platform_admin" ||
+      input.nextStatus !== "active");
+  if (
+    removesLastActiveAdministrator &&
+    input.activeAdministratorIds.length <= 1
+  )
+    throw new ConflictError(
+      "LAST_PLATFORM_ADMIN",
+      "平台至少需要保留一位启用的平台管理员。",
+    );
+}
+
+export async function setUserPlatformRole(
+  id: string,
+  raw: unknown,
+): Promise<PlatformUser> {
+  const input = updatePlatformRoleSchema.parse(raw);
+  const client = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query("BEGIN");
+    transactionOpen = true;
+    // Lock all current administrators in a stable order. This prevents two
+    // concurrent demotions from each observing a different "last admin".
+    const activeAdministratorIds = await lockActivePlatformAdministrators(client);
+    const target = await client.query<UserRow>(
+      "SELECT * FROM platform_users WHERE id=$1 FOR UPDATE",
+      [id],
+    );
+    const current = target.rows[0];
+    if (!current) throw new NotFoundError("用户", id);
+    assertPlatformAdministrationRetained({
+      user: current,
+      activeAdministratorIds,
+      nextPlatformRole: input.platformRole,
+      nextStatus: current.status,
+    });
+    const changed = current.platform_role !== input.platformRole;
+    const result = await client.query<UserRow>(
+      `UPDATE platform_users
+       SET platform_role=$2,updated_at=now()
+       WHERE id=$1 RETURNING *`,
+      [id, input.platformRole],
+    );
+    // A promotion takes effect on the next authenticated request. Keep the
+    // current refresh session so the user receives the same role at the next
+    // token refresh. A demotion must invalidate renewal credentials instead.
+    if (changed && input.platformRole !== "platform_admin")
+      await revokeUserSessions(id, client);
+    await client.query("COMMIT");
+    transactionOpen = false;
+    return mapUser(result.rows[0]);
+  } catch (error) {
+    if (transactionOpen) await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function setUserStatus(
   id: string,
   status: "active" | "disabled",
 ): Promise<PlatformUser> {
-  const rows = await query<UserRow>(
-    "UPDATE platform_users SET status=$2,updated_at=now() WHERE id=$1 RETURNING *",
-    [id, status],
-  );
-  if (!rows[0]) throw new NotFoundError("用户", id);
-  if (status === "disabled")
-    await query(
-      "UPDATE auth_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL",
+  const client = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query("BEGIN");
+    transactionOpen = true;
+    const activeAdministratorIds = await lockActivePlatformAdministrators(client);
+    const target = await client.query<UserRow>(
+      "SELECT * FROM platform_users WHERE id=$1 FOR UPDATE",
       [id],
     );
-  return mapUser(rows[0]);
+    const current = target.rows[0];
+    if (!current) throw new NotFoundError("用户", id);
+    assertPlatformAdministrationRetained({
+      user: current,
+      activeAdministratorIds,
+      nextPlatformRole: current.platform_role,
+      nextStatus: status,
+    });
+    const result = await client.query<UserRow>(
+      "UPDATE platform_users SET status=$2,updated_at=now() WHERE id=$1 RETURNING *",
+      [id, status],
+    );
+    if (status === "disabled") await revokeUserSessions(id, client);
+    await client.query("COMMIT");
+    transactionOpen = false;
+    return mapUser(result.rows[0]);
+  } catch (error) {
+    if (transactionOpen) await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function upsertOidcUser(input: {
