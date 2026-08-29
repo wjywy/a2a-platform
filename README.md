@@ -60,7 +60,7 @@
 - 每个 Agent 是平台进程内的真实 HTTP+JSON A2A 服务；仍由平台网关鉴权、配额、任务中心和健康检查统一管理。
 - 用户可输入任意自然语言。模型仅提取已明确给出的标的、周期和观点；不会用硬编码公司名称表猜测代码。缺少关键参数时，返回 A2A `TASK_STATE_INPUT_REQUIRED` 并在同一 Task 中追问。
 - 会话、槽位、任务结果保存在 PostgreSQL 的 `symbol_conversations`；Redis 仅缓存短时行情和会话读取，不承担持久化职责。
-- 行情与资讯使用公开 Yahoo Finance 数据源；配置 `DEEPSEEK_API_KEY` 后启用结构化意图解析。所有输出均明确为研究参考，不构成投资建议。
+- 行情与资讯使用公开 Yahoo Finance 数据源；配置 `DEEPSEEK_API_KEY` 后启用结构化意图解析和基于工具证据的真实对话回复。模型不可用时会明确返回失败，不会以固定行情文案冒充回答。所有输出均明确为研究参考，不构成投资建议。
 
 ### 调用与任务中心
 
@@ -206,33 +206,33 @@ npm run down
 
 ## 配置
 
-| 变量                             | 示例                                                      | 说明                      |
-| -------------------------------- | --------------------------------------------------------- | ------------------------- |
-| `POSTGRES_URL`                   | `postgres://platform:platform@postgres:5432/a2a_platform` | PostgreSQL                |
-| `REDIS_URL`                      | `redis://redis:6379`                                      | 限流与实时事件            |
-| `PLATFORM_ORIGIN`                | `http://localhost:8080`                                   | 代理 Card 外部 URL        |
-| `CONSOLE_ORIGINS`                | `http://localhost:5173`                                   | 控制台 CORS 白名单        |
-| `PLATFORM_DEV_TOKEN`             | `dev-admin-token`                                         | 本地管理 Token            |
-| `PLATFORM_JWT_SECRET`            | 随机 32+ 字符                                             | HS256 管理 JWT 密钥       |
-| `PLATFORM_JWT_ISSUER`            | `a2a-agent-platform`                                      | JWT issuer                |
-| `LOCAL_LOGIN_ENABLED`            | `true`                                                    | 是否允许本地密码登录      |
-| `SELF_REGISTRATION_ENABLED`      | `true`                                                    | 是否允许外部用户自助注册  |
-| `OIDC_ISSUER` / `OIDC_CLIENT_ID` | 企业 IdP 配置                                             | OIDC 授权码 + PKCE 登录   |
-| `CREDENTIAL_ENCRYPTION_KEY`      | 独立随机密钥                                              | 上游凭据 AES-GCM 加密     |
-| `CREDENTIAL_KEY_VERSION`         | `v2`                                                      | 当前凭据加密密钥版本      |
-| `CREDENTIAL_PREVIOUS_KEYS`       | `{"v1":"旧密钥"}`                                         | 轮换期间只读旧版本密钥环  |
-| `SMTP_URL`                       | `smtps://...`                                             | 邮件通知投递              |
-| `METRICS_TOKEN`                  | 随机监控令牌                                              | 保护 `/metrics`           |
-| `ALLOW_PRIVATE_OUTBOUND_TARGETS` | `true`                                                    | 是否允许内网 Card/Webhook |
-| `HEALTH_CHECK_INTERVAL_MS`       | `30000`                                                   | Worker 周期               |
-| `MAX_A2A_RESPONSE_BYTES`         | `16777216`                                                | 单次上游响应解压后上限    |
-| `MAX_A2A_EVENT_BYTES`            | `1048576`                                                 | 单个 SSE 事件上限         |
-| `MAX_A2A_STREAM_EVENTS`          | `10000`                                                   | 单次流最大事件数          |
-| `MAX_A2A_CALL_DURATION_MS`       | `300000`                                                  | 不可由租户放大的调用上限  |
-| `SYMBOL_INTERNAL_TOKEN`          | 随机 32 字节令牌                                          | 平台调用内置 Symbol Agent 的私有凭据 |
-| `DEEPSEEK_API_KEY`               | `sk-...`                                                  | 自然语言意图提取；未配置时会追问关键参数 |
-| `DEEPSEEK_MODEL`                 | `deepseek-chat`                                           | 意图提取模型              |
-| `FINNHUB_API_KEY`                | 可选                                                      | 为后续扩展保留的新闻数据源凭据 |
+| 变量                             | 示例                                                      | 说明                                                       |
+| -------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- |
+| `POSTGRES_URL`                   | `postgres://platform:platform@postgres:5432/a2a_platform` | PostgreSQL                                                 |
+| `REDIS_URL`                      | `redis://redis:6379`                                      | 限流与实时事件                                             |
+| `PLATFORM_ORIGIN`                | `http://localhost:8080`                                   | 代理 Card 外部 URL                                         |
+| `CONSOLE_ORIGINS`                | `http://localhost:5173`                                   | 控制台 CORS 白名单                                         |
+| `PLATFORM_DEV_TOKEN`             | `dev-admin-token`                                         | 本地管理 Token                                             |
+| `PLATFORM_JWT_SECRET`            | 随机 32+ 字符                                             | HS256 管理 JWT 密钥                                        |
+| `PLATFORM_JWT_ISSUER`            | `a2a-agent-platform`                                      | JWT issuer                                                 |
+| `LOCAL_LOGIN_ENABLED`            | `true`                                                    | 是否允许本地密码登录                                       |
+| `SELF_REGISTRATION_ENABLED`      | `true`                                                    | 是否允许外部用户自助注册                                   |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` | 企业 IdP 配置                                             | OIDC 授权码 + PKCE 登录                                    |
+| `CREDENTIAL_ENCRYPTION_KEY`      | 独立随机密钥                                              | 上游凭据 AES-GCM 加密                                      |
+| `CREDENTIAL_KEY_VERSION`         | `v2`                                                      | 当前凭据加密密钥版本                                       |
+| `CREDENTIAL_PREVIOUS_KEYS`       | `{"v1":"旧密钥"}`                                         | 轮换期间只读旧版本密钥环                                   |
+| `SMTP_URL`                       | `smtps://...`                                             | 邮件通知投递                                               |
+| `METRICS_TOKEN`                  | 随机监控令牌                                              | 保护 `/metrics`                                            |
+| `ALLOW_PRIVATE_OUTBOUND_TARGETS` | `true`                                                    | 是否允许内网 Card/Webhook                                  |
+| `HEALTH_CHECK_INTERVAL_MS`       | `30000`                                                   | Worker 周期                                                |
+| `MAX_A2A_RESPONSE_BYTES`         | `16777216`                                                | 单次上游响应解压后上限                                     |
+| `MAX_A2A_EVENT_BYTES`            | `1048576`                                                 | 单个 SSE 事件上限                                          |
+| `MAX_A2A_STREAM_EVENTS`          | `10000`                                                   | 单次流最大事件数                                           |
+| `MAX_A2A_CALL_DURATION_MS`       | `300000`                                                  | 不可由租户放大的调用上限                                   |
+| `SYMBOL_INTERNAL_TOKEN`          | 随机 32 字节令牌                                          | 平台调用内置 Symbol Agent 的私有凭据                       |
+| `DEEPSEEK_API_KEY`               | `sk-...`                                                  | 自然语言意图提取与最终对话回复；未配置时不会回退为固定文案 |
+| `DEEPSEEK_MODEL`                 | `deepseek-chat`                                           | 意图提取与对话回复模型                                     |
+| `FINNHUB_API_KEY`                | 可选                                                      | 为后续扩展保留的新闻数据源凭据                             |
 
 生产必须使用随机 JWT 密钥、关闭开发 Token、关闭私网出站、配置 TLS、备份和监控。
 

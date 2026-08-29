@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AgentCard, Task } from "@a2a-js/sdk";
+import { config } from "./config.js";
 import {
   __symbolServiceInternals,
   symbolAgentSlugs,
@@ -113,5 +114,69 @@ describe("bundled Symbol A2A agents", () => {
     });
     expect(result.news).toEqual([]);
     expect(__symbolServiceInternals.parseNasdaqNumber("N/A")).toBeNull();
+  });
+
+  it("uses a model reply for the latest turn instead of returning a tool template", async () => {
+    const originalKey = config.deepseekApiKey;
+    const originalModel = config.deepseekModel;
+    config.deepseekApiKey = "test-key";
+    config.deepseekModel = "test-model";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  "当然。AAPL 近五日上涨 1.37%，但还需要结合成交量和财报预期判断趋势的可持续性。",
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const reply = await __symbolServiceInternals.generateResearchResponse({
+        slug: "symbol-market",
+        userMessage: "详细一点",
+        transcript: [
+          { role: "user", text: "分析 AAPL", at: "2026-08-29T00:00:00.000Z" },
+        ],
+        intent: { symbol: "AAPL", question: "详细一点", missing: [] },
+        result: {
+          text: "AAPL 最新收盘/报价：314.58；日变动 0.36%，近五日 1.37%。",
+          data: { symbol: "AAPL", close: 314.58, fiveDayChange: 0.0137 },
+        },
+      });
+      expect(reply).toContain("成交量和财报预期");
+      const request = fetchMock.mock.calls[0]?.[1] as { body: string };
+      expect(JSON.parse(request.body).messages.at(-1).content).toContain(
+        "详细一点",
+      );
+    } finally {
+      config.deepseekApiKey = originalKey;
+      config.deepseekModel = originalModel;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("fails clearly when no model is configured instead of using a fixed reply", async () => {
+    const originalKey = config.deepseekApiKey;
+    config.deepseekApiKey = "";
+    try {
+      await expect(
+        __symbolServiceInternals.generateResearchResponse({
+          slug: "symbol-market",
+          userMessage: "详细一点",
+          transcript: [],
+          intent: { symbol: "AAPL", missing: [] },
+          result: { text: "固定报价", data: { symbol: "AAPL" } },
+        }),
+      ).rejects.toThrow("不会使用固定文案");
+    } finally {
+      config.deepseekApiKey = originalKey;
+    }
   });
 });
