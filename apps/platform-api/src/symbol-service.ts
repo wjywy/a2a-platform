@@ -65,7 +65,8 @@ export type Intent = {
 /**
  * The built-in A2A route emits these hooks as DeepSeek produces content so the
  * Studio transport can render a real incremental reply instead of a delayed
- * single final Task.
+ * single final Task. Each status update contains the cumulative text seen so
+ * far, while the final Task remains the authoritative persisted response.
  */
 export type SymbolMessageStreamHooks = {
   /** Announces the server task before the Agent starts collecting evidence. */

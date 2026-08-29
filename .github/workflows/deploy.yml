@@ -66,11 +66,11 @@ jobs:
         run: |
           # Workflow-only changes (such as rotating or adding optional runtime
           # configuration) can safely reuse the image already on the server.
-          # An API-only change needs only the API image. This keeps a constrained
-          # production link from timing out while the untouched worker, migrate,
-          # and console images remain pinned to their last verified release.
-          # Shared-package, console, dependency, and infrastructure changes
-          # intentionally retain the full release-image set.
+          # A source-only API change can be applied as a new layer on the
+          # existing API image. That avoids transferring unchanged Node modules
+          # across a constrained production link. Shared-package, dependency,
+          # console, and infrastructure changes intentionally retain the full
+          # release-image set.
           if [ "${{ github.event_name }}" != "push" ]; then
             echo "image_mode=all" >> "$GITHUB_OUTPUT"
           else
@@ -78,10 +78,10 @@ jobs:
               . ':(exclude).github/workflows/deploy.yml')"
             if [ -z "$changed_files" ]; then
               echo "image_mode=none" >> "$GITHUB_OUTPUT"
-            elif printf '%s\n' "$changed_files" | grep -Eqv '^apps/platform-api/'; then
+            elif printf '%s\n' "$changed_files" | grep -Eqv '^apps/platform-api/src/'; then
               echo "image_mode=all" >> "$GITHUB_OUTPUT"
             else
-              echo "image_mode=api" >> "$GITHUB_OUTPUT"
+              echo "image_mode=api-overlay" >> "$GITHUB_OUTPUT"
             fi
           fi
 
@@ -98,29 +98,23 @@ jobs:
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
       - name: Build release images on the runner
-        if: steps.release_payload.outputs.image_mode != 'none'
+        if: steps.release_payload.outputs.image_mode == 'all'
         run: |
           # The production instance has 1.8 GiB RAM and no swap. Building
           # Node images there OOM-killed Postgres and the API, so build on the
           # GitHub runner and transfer the tagged images over the existing SSH
           # deployment channel instead.
-          image_mode="${{ steps.release_payload.outputs.image_mode }}"
-          if [ "$image_mode" = "api" ]; then
-            docker compose -f infra/docker-compose.yml build api
-            docker save infra-api | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
-          else
-            docker compose -f infra/docker-compose.yml build
-            docker save \
-              infra-api infra-migrate infra-worker infra-console \
-              | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
-          fi
+          docker compose -f infra/docker-compose.yml build
+          docker save \
+            infra-api infra-migrate infra-worker infra-console \
+            | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
           # docker save emits uncompressed layer tars. Compressing them on the
           # runner keeps a constrained production link from spending many
           # minutes transferring duplicate Node and OS filesystem contents.
           du -h "$RUNNER_TEMP/a2a-platform-images.tar.gz"
 
       - name: Transfer release images
-        if: steps.release_payload.outputs.image_mode != 'none'
+        if: steps.release_payload.outputs.image_mode == 'all'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -201,9 +195,27 @@ jobs:
                 "$(printf '%s' "$DEEPSEEK_MODEL_B64" | base64 --decode)"
             fi
             git pull --ff-only origin main
-            if [ "${RELEASE_IMAGE_MODE:-all}" != "none" ]; then
+            overlay_container=""
+            cleanup_overlay() {
+              if [ -n "$overlay_container" ]; then
+                sudo docker rm -f "$overlay_container" >/dev/null 2>&1 || true
+              fi
+            }
+            trap cleanup_overlay EXIT
+            if [ "${RELEASE_IMAGE_MODE:-all}" = "all" ]; then
               gzip --decompress --stdout /tmp/a2a-platform-images.tar.gz | sudo docker load
               rm -f /tmp/a2a-platform-images.tar.gz
+            elif [ "${RELEASE_IMAGE_MODE}" = "api-overlay" ]; then
+              # TypeScript is executed by the existing runtime's tsx loader.
+              # Copying source into a stopped container and committing it adds
+              # a durable small layer without building on the low-memory host.
+              overlay_container="a2a-api-overlay-$$"
+              sudo docker create --name "$overlay_container" infra-api >/dev/null
+              sudo docker cp "$app_dir/apps/platform-api/src/." \
+                "$overlay_container:/app/apps/platform-api/src"
+              sudo docker commit "$overlay_container" infra-api >/dev/null
+              sudo docker rm "$overlay_container" >/dev/null
+              overlay_container=""
             else
               # Clear interrupted transfer payloads before reusing the already
               # deployed image set for a configuration-only release.
