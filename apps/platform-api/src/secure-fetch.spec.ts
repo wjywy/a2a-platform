@@ -1,7 +1,11 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
-import { readLimitedResponseText, secureFetchWithPolicy } from "./secure-fetch.js";
+import {
+  createLimitedFetch,
+  readLimitedResponseText,
+  secureFetchWithPolicy,
+} from "./secure-fetch.js";
 
 const responseOf = (text: string) =>
   new Response(
@@ -43,6 +47,9 @@ describe("bounded outbound responses", () => {
     try {
       await expect(
         secureFetchWithPolicy(url, undefined, { allowPrivate: true }),
+      ).resolves.toMatchObject({ ok: true });
+      await expect(
+        createLimitedFetch(1_024, { allowPrivate: true })(url),
       ).resolves.toMatchObject({ ok: true });
     } finally {
       if (previousNodeEnv === undefined) delete process.env.NODE_ENV;

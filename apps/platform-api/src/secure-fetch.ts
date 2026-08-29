@@ -64,9 +64,12 @@ export async function secureFetchWithPolicy(
 export const secureFetch: typeof fetch = (input, init) =>
   secureFetchWithPolicy(input, init);
 
-export function createLimitedFetch(maxBytes: number): typeof fetch {
+export function createLimitedFetch(
+  maxBytes: number,
+  options: { allowPrivate?: boolean } = {},
+): typeof fetch {
   return (async (input, init) => {
-    const response = await secureFetch(input, init);
+    const response = await secureFetchWithPolicy(input, init, options);
     if (!response.body) return response;
     let received = 0;
     const limited = response.body.pipeThrough(

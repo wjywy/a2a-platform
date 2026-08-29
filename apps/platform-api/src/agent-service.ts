@@ -15,7 +15,6 @@ import {
 import {
   createLimitedFetch,
   readLimitedResponseText,
-  secureFetch,
   secureFetchWithPolicy,
 } from "./secure-fetch.js";
 import { config } from "./config.js";
@@ -282,13 +281,18 @@ export async function getRemoteClient(
   },
 ) {
   const selected = target?.selectedInterface ?? agent.selectedInterface;
-  await assertSafeOutboundUrl(selected.url, {
+  const upstreamUrl = symbolUpstreamUrl(selected.url);
+  const allowPrivate =
+    allowPrivateOutboundTargets() || isTrustedSymbolInternalUrl(upstreamUrl);
+  await assertSafeOutboundUrl(upstreamUrl, {
     purpose: "agent_card",
-    allowPrivate: allowPrivateOutboundTargets(),
+    allowPrivate,
   });
   const card = structuredClone(agent.cardSnapshot);
-  card.supportedInterfaces = [{ ...selected, url: symbolUpstreamUrl(selected.url), tenant: "" }];
-  const limitedFetch = createLimitedFetch(config.maxA2AResponseBytes);
+  card.supportedInterfaces = [{ ...selected, url: upstreamUrl, tenant: "" }];
+  const limitedFetch = createLimitedFetch(config.maxA2AResponseBytes, {
+    allowPrivate,
+  });
   const authHeaders = credentialHeaders(target?.credential ?? { type: "none" });
   const transportFetch: typeof fetch = (input, init = {}) =>
     limitedFetch(input, {
