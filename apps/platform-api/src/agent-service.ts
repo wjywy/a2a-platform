@@ -141,13 +141,16 @@ export function diffAgentCards(
 export async function resolveRemoteCard(
   cardUrl: string,
   credential: UpstreamCredential = { type: "none" },
+  options: { allowPrivate?: boolean } = {},
 ): Promise<AgentCard> {
   let target = cardUrl;
   const credentialOrigin = new URL(cardUrl).origin;
+  const allowPrivate =
+    options.allowPrivate ?? allowPrivateOutboundTargets();
   for (let redirect = 0; redirect <= 3; redirect++) {
     await assertSafeOutboundUrl(target, {
       purpose: "agent_card",
-      allowPrivate: allowPrivateOutboundTargets(),
+      allowPrivate,
     });
     const response = await secureFetch(target, {
       redirect: "manual",
@@ -188,17 +191,20 @@ export function selectCompatibleInterface(
 export async function validateRemoteAgent(
   cardUrl: string,
   credential: UpstreamCredential = { type: "none" },
+  options: { allowPrivate?: boolean } = {},
 ): Promise<{
   card: AgentCard;
   selectedInterface: NonNullable<AgentCard["supportedInterfaces"]>[number];
 }> {
+  const allowPrivate =
+    options.allowPrivate ?? allowPrivateOutboundTargets();
   await assertSafeOutboundUrl(cardUrl, {
     purpose: "agent_card",
-    allowPrivate: allowPrivateOutboundTargets(),
+    allowPrivate,
   });
   let resolved: AgentCard;
   try {
-    resolved = await resolveRemoteCard(cardUrl, credential);
+    resolved = await resolveRemoteCard(cardUrl, credential, { allowPrivate });
   } catch (error) {
     throw new AppError(
       422,
@@ -214,7 +220,7 @@ export async function validateRemoteAgent(
   const selectedInterface = selectCompatibleInterface(card);
   await assertSafeOutboundUrl(selectedInterface.url, {
     purpose: "agent_card",
-    allowPrivate: allowPrivateOutboundTargets(),
+    allowPrivate,
   });
   return { card, selectedInterface };
 }
@@ -250,6 +256,17 @@ export function symbolUpstreamUrl(value: string): string {
   const publicPrefix = `${config.platformOrigin}/api/builtin/symbol/`;
   if (!value.startsWith(publicPrefix)) return value;
   return `${config.symbolInternalOrigin}${value.slice(config.platformOrigin.length)}`;
+}
+
+/**
+ * The API service address is trusted deployment configuration, not Agent
+ * registration input. Restrict the private-network exception to the bundled
+ * Symbol path so registered third-party Agent URLs keep the SSRF boundary.
+ */
+export function isTrustedSymbolInternalUrl(value: string): boolean {
+  return value.startsWith(
+    `${config.symbolInternalOrigin}/api/builtin/symbol/`,
+  );
 }
 
 export async function getRemoteClient(

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { AgentCard } from "@a2a-js/sdk";
+import { config } from "./config.js";
 import {
+  isTrustedSymbolInternalUrl,
   normalizeLocalDevelopmentEndpoints,
   platformCard,
   selectCompatibleInterface,
+  symbolUpstreamUrl,
 } from "./agent-service.js";
 import type { PlatformAgent } from "./types.js";
 
@@ -133,5 +136,35 @@ describe("platform agent gateway", () => {
         "http://localhost:41241/.well-known/agent-card.json",
       ).supportedInterfaces?.[0].url,
     ).toBe("http://localhost:41241/a2a");
+  });
+});
+
+describe("bundled Symbol internal routing", () => {
+  it("allows only the configured internal Symbol path to bypass public routing", () => {
+    const platformOrigin = config.platformOrigin;
+    const symbolInternalOrigin = config.symbolInternalOrigin;
+    try {
+      config.platformOrigin = "https://a2a-platform.com";
+      config.symbolInternalOrigin = "http://api:3000";
+
+      const internal = symbolUpstreamUrl(
+        "https://a2a-platform.com/api/builtin/symbol/symbol-market/.well-known/agent-card.json",
+      );
+      expect(internal).toBe(
+        "http://api:3000/api/builtin/symbol/symbol-market/.well-known/agent-card.json",
+      );
+      expect(isTrustedSymbolInternalUrl(internal)).toBe(true);
+      expect(
+        isTrustedSymbolInternalUrl("http://api:3000/internal/other-agent"),
+      ).toBe(false);
+      expect(
+        isTrustedSymbolInternalUrl(
+          "http://other-api:3000/api/builtin/symbol/x",
+        ),
+      ).toBe(false);
+    } finally {
+      config.platformOrigin = platformOrigin;
+      config.symbolInternalOrigin = symbolInternalOrigin;
+    }
   });
 });
