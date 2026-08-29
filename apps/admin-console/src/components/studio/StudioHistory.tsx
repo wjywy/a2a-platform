@@ -195,6 +195,7 @@ export function StudioHistory() {
   const studio = useStudio();
   const data = studio.history.state.data;
   const totalPages = data?.totalPages ?? 1;
+  const hasLoadedHistory = data !== undefined;
 
   return (
     <>
@@ -328,16 +329,8 @@ export function StudioHistory() {
           </div>
         </div>
 
-        <div
-          className={styles.historyList}
-          aria-busy={studio.history.state.loading}
-        >
-          {studio.history.state.loading ? (
-            <div className={styles.historyLoading} role="status">
-              <LoadingOutlined spin />
-              <span>正在读取会话</span>
-            </div>
-          ) : studio.history.groups.length ? (
+        <div className={styles.historyList} aria-busy={false}>
+          {studio.history.groups.length ? (
             studio.history.groups.map((group) => (
               <section className={styles.historyGroup} key={group.label}>
                 <h2>{group.label}</h2>
@@ -351,9 +344,9 @@ export function StudioHistory() {
                 </div>
               </section>
             ))
-          ) : (
+          ) : hasLoadedHistory ? (
             <HistoryEmpty />
-          )}
+          ) : null}
         </div>
 
         {data && totalPages > 1 ? (

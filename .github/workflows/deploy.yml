@@ -66,11 +66,11 @@ jobs:
         run: |
           # Workflow-only changes (such as rotating or adding optional runtime
           # configuration) can safely reuse the image already on the server.
-          # A source-only API change can be applied as a new layer on the
-          # existing API image. That avoids transferring unchanged Node modules
-          # across a constrained production link. Shared-package, dependency,
-          # console, and infrastructure changes intentionally retain the full
-          # release-image set.
+          # Source-only API and console changes can be applied as small layers
+          # on their existing images. That avoids transferring unchanged Node
+          # modules across a constrained production link. Shared-package,
+          # dependency, and infrastructure changes intentionally retain the
+          # full release-image set.
           if [ "${{ github.event_name }}" != "push" ]; then
             echo "image_mode=all" >> "$GITHUB_OUTPUT"
           else
@@ -78,10 +78,12 @@ jobs:
               . ':(exclude).github/workflows/deploy.yml')"
             if [ -z "$changed_files" ]; then
               echo "image_mode=none" >> "$GITHUB_OUTPUT"
-            elif printf '%s\n' "$changed_files" | grep -Eqv '^apps/platform-api/src/'; then
-              echo "image_mode=all" >> "$GITHUB_OUTPUT"
-            else
+            elif ! printf '%s\n' "$changed_files" | grep -Eqv '^apps/platform-api/src/' >/dev/null; then
               echo "image_mode=api-overlay" >> "$GITHUB_OUTPUT"
+            elif ! printf '%s\n' "$changed_files" | grep -Eqv '^apps/admin-console/src/' >/dev/null; then
+              echo "image_mode=console-overlay" >> "$GITHUB_OUTPUT"
+            else
+              echo "image_mode=all" >> "$GITHUB_OUTPUT"
             fi
           fi
 
@@ -98,23 +100,38 @@ jobs:
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
       - name: Build release images on the runner
-        if: steps.release_payload.outputs.image_mode == 'all'
+        if: steps.release_payload.outputs.image_mode == 'all' || steps.release_payload.outputs.image_mode == 'console-overlay'
         run: |
           # The production instance has 1.8 GiB RAM and no swap. Building
           # Node images there OOM-killed Postgres and the API, so build on the
           # GitHub runner and transfer the tagged images over the existing SSH
           # deployment channel instead.
-          docker compose -f infra/docker-compose.yml build
-          docker save \
-            infra-api infra-migrate infra-worker infra-console \
-            | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
-          # docker save emits uncompressed layer tars. Compressing them on the
-          # runner keeps a constrained production link from spending many
-          # minutes transferring duplicate Node and OS filesystem contents.
-          du -h "$RUNNER_TEMP/a2a-platform-images.tar.gz"
+          image_mode="${{ steps.release_payload.outputs.image_mode }}"
+          if [ "$image_mode" = "console-overlay" ]; then
+            docker compose -f infra/docker-compose.yml build console
+            artifact_container="a2a-console-artifact-$$"
+            trap 'docker rm -f "$artifact_container" >/dev/null 2>&1 || true' EXIT
+            docker create --name "$artifact_container" infra-console >/dev/null
+            console_dir="$RUNNER_TEMP/a2a-console-html"
+            rm -rf "$console_dir"
+            mkdir -p "$console_dir"
+            docker cp "$artifact_container:/usr/share/nginx/html/." "$console_dir"
+            docker rm "$artifact_container" >/dev/null
+            tar -C "$console_dir" -czf "$RUNNER_TEMP/a2a-console-html.tar.gz" .
+            du -h "$RUNNER_TEMP/a2a-console-html.tar.gz"
+          else
+            docker compose -f infra/docker-compose.yml build
+            docker save \
+              infra-api infra-migrate infra-worker infra-console \
+              | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
+            # docker save emits uncompressed layer tars. Compressing them on the
+            # runner keeps a constrained production link from spending many
+            # minutes transferring duplicate Node and OS filesystem contents.
+            du -h "$RUNNER_TEMP/a2a-platform-images.tar.gz"
+          fi
 
       - name: Transfer release images
-        if: steps.release_payload.outputs.image_mode == 'all'
+        if: steps.release_payload.outputs.image_mode == 'all' || steps.release_payload.outputs.image_mode == 'console-overlay'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -123,13 +140,21 @@ jobs:
           # in turn held the production deployment concurrency lock forever.
           # Keep the transfer observable and fail it deterministically so a
           # later push can recover the release pipeline.
+          image_mode="${{ steps.release_payload.outputs.image_mode }}"
+          if [ "$image_mode" = "console-overlay" ]; then
+            archive="$RUNNER_TEMP/a2a-console-html.tar.gz"
+            target="/tmp/a2a-console-html.tar.gz"
+          else
+            archive="$RUNNER_TEMP/a2a-platform-images.tar.gz"
+            target="/tmp/a2a-platform-images.tar.gz"
+          fi
           timeout --preserve-status 12m scp \
             -o BatchMode=yes \
             -o ConnectTimeout=30 \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=4 \
-            "$RUNNER_TEMP/a2a-platform-images.tar.gz" \
-            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/a2a-platform-images.tar.gz"
+            "$archive" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$target"
 
       - name: Deploy
         env:
@@ -196,12 +221,16 @@ jobs:
             fi
             git pull --ff-only origin main
             overlay_container=""
-            cleanup_overlay() {
+            console_stage=""
+            cleanup_release_overlay() {
               if [ -n "$overlay_container" ]; then
                 sudo docker rm -f "$overlay_container" >/dev/null 2>&1 || true
               fi
+              if [ -n "$console_stage" ]; then
+                rm -rf "$console_stage"
+              fi
             }
-            trap cleanup_overlay EXIT
+            trap cleanup_release_overlay EXIT
             if [ "${RELEASE_IMAGE_MODE:-all}" = "all" ]; then
               gzip --decompress --stdout /tmp/a2a-platform-images.tar.gz | sudo docker load
               rm -f /tmp/a2a-platform-images.tar.gz
@@ -216,6 +245,20 @@ jobs:
               sudo docker commit "$overlay_container" infra-api >/dev/null
               sudo docker rm "$overlay_container" >/dev/null
               overlay_container=""
+            elif [ "${RELEASE_IMAGE_MODE}" = "console-overlay" ]; then
+              console_stage="$(mktemp -d /tmp/a2a-console-html.XXXXXX)"
+              tar -xzf /tmp/a2a-console-html.tar.gz -C "$console_stage"
+              test -f "$console_stage/index.html"
+              overlay_container="a2a-console-overlay-$$"
+              sudo docker create --name "$overlay_container" infra-console >/dev/null
+              sudo docker cp "$console_stage/." \
+                "$overlay_container:/usr/share/nginx/html"
+              sudo docker commit "$overlay_container" infra-console >/dev/null
+              sudo docker rm "$overlay_container" >/dev/null
+              overlay_container=""
+              rm -f /tmp/a2a-console-html.tar.gz
+              rm -rf "$console_stage"
+              console_stage=""
             else
               # Clear interrupted transfer payloads before reusing the already
               # deployed image set for a configuration-only release.
@@ -280,18 +323,20 @@ jobs:
               exec -T postgres psql -U platform -d a2a_platform -Atc \
               "SELECT id FROM tenants WHERE slug='default' AND status='active' LIMIT 1;")"
             test -n "$tenant_id"
-            message_id="$(cat /proc/sys/kernel/random/uuid)"
-            response="$(curl --fail --silent --show-error --max-time 90 \
-              -H "authorization: Bearer $symbol_token" \
-              -H 'content-type: application/json' \
-              --data "{\"message\":{\"messageId\":\"$message_id\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"请分析 AAPL 的短线风险，并用中文简洁回答。\"}]}}" \
-              "http://127.0.0.1:8080/api/builtin/symbol/symbol-market/$tenant_id/message:stream")"
-            event_count="$(printf '%s\n' "$response" | grep -c '^data: ' || true)"
-            test "$event_count" -ge 3
-            printf '%s' "$response" | grep -q '"state":"TASK_STATE_COMPLETED"'
-            if printf '%s' "$response" | grep -Fq 'AI 回复服务未配置'; then
-              echo '::error::Built-in Agent reported an unconfigured AI response service.'
-              exit 1
-            fi
-            echo 'Built-in Agent real-model stream smoke test passed.'
+            for agent_slug in symbol-market symbol-company; do
+              message_id="$(cat /proc/sys/kernel/random/uuid)"
+              response="$(curl --fail --silent --show-error --max-time 90 \
+                -H "authorization: Bearer $symbol_token" \
+                -H 'content-type: application/json' \
+                --data "{\"message\":{\"messageId\":\"$message_id\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"请分析 AAPL 的短线风险，并用中文简洁回答。\"}]}}" \
+                "http://127.0.0.1:8080/api/builtin/symbol/$agent_slug/$tenant_id/message:stream")"
+              event_count="$(printf '%s\n' "$response" | grep -c '^data: ' || true)"
+              test "$event_count" -ge 3
+              printf '%s' "$response" | grep -q '"state":"TASK_STATE_COMPLETED"'
+              if printf '%s' "$response" | grep -Fq 'AI 回复服务未配置'; then
+                echo '::error::Built-in Agent reported an unconfigured AI response service.'
+                exit 1
+              fi
+              echo "$agent_slug real-model stream smoke test passed."
+            done
           REMOTE
