@@ -66,14 +66,23 @@ jobs:
         run: |
           # Workflow-only changes (such as rotating or adding optional runtime
           # configuration) can safely reuse the image already on the server.
-          # Application, infrastructure, or dependency changes still publish
-          # a fresh image set from the GitHub runner.
-          if [ "${{ github.event_name }}" = "push" ] \
-            && git diff --quiet "${{ github.event.before }}" "${{ github.sha }}" -- \
-              . ':(exclude).github/workflows/deploy.yml'; then
-            echo "images=false" >> "$GITHUB_OUTPUT"
+          # An API-only change needs only the API image. This keeps a constrained
+          # production link from timing out while the untouched worker, migrate,
+          # and console images remain pinned to their last verified release.
+          # Shared-package, console, dependency, and infrastructure changes
+          # intentionally retain the full release-image set.
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "image_mode=all" >> "$GITHUB_OUTPUT"
           else
-            echo "images=true" >> "$GITHUB_OUTPUT"
+            changed_files="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- \
+              . ':(exclude).github/workflows/deploy.yml')"
+            if [ -z "$changed_files" ]; then
+              echo "image_mode=none" >> "$GITHUB_OUTPUT"
+            elif printf '%s\n' "$changed_files" | grep -Eqv '^apps/platform-api/'; then
+              echo "image_mode=all" >> "$GITHUB_OUTPUT"
+            else
+              echo "image_mode=api" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Configure SSH
@@ -89,23 +98,29 @@ jobs:
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
       - name: Build release images on the runner
-        if: steps.release_payload.outputs.images == 'true'
+        if: steps.release_payload.outputs.image_mode != 'none'
         run: |
           # The production instance has 1.8 GiB RAM and no swap. Building
           # Node images there OOM-killed Postgres and the API, so build on the
           # GitHub runner and transfer the tagged images over the existing SSH
           # deployment channel instead.
-          docker compose -f infra/docker-compose.yml build
+          image_mode="${{ steps.release_payload.outputs.image_mode }}"
+          if [ "$image_mode" = "api" ]; then
+            docker compose -f infra/docker-compose.yml build api
+            docker save infra-api | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
+          else
+            docker compose -f infra/docker-compose.yml build
+            docker save \
+              infra-api infra-migrate infra-worker infra-console \
+              | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
+          fi
           # docker save emits uncompressed layer tars. Compressing them on the
           # runner keeps a constrained production link from spending many
           # minutes transferring duplicate Node and OS filesystem contents.
-          docker save \
-            infra-api infra-migrate infra-worker infra-console \
-            | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
           du -h "$RUNNER_TEMP/a2a-platform-images.tar.gz"
 
       - name: Transfer release images
-        if: steps.release_payload.outputs.images == 'true'
+        if: steps.release_payload.outputs.image_mode != 'none'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -128,7 +143,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
-          RELEASE_IMAGES: ${{ steps.release_payload.outputs.images }}
+          RELEASE_IMAGE_MODE: ${{ steps.release_payload.outputs.image_mode }}
         run: |
           # Encode optional model credentials before handing them to SSH. The
           # remote script only updates .env when a non-empty repository secret
@@ -136,7 +151,7 @@ jobs:
           deepseek_api_key_b64="$(printf '%s' "$DEEPSEEK_API_KEY" | base64 -w 0)"
           deepseek_model_b64="$(printf '%s' "$DEEPSEEK_MODEL" | base64 -w 0)"
           ssh "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEEPSEEK_API_KEY_B64=$deepseek_api_key_b64 DEEPSEEK_MODEL_B64=$deepseek_model_b64 RELEASE_IMAGES=$RELEASE_IMAGES bash -se" <<'REMOTE'
+            "DEEPSEEK_API_KEY_B64=$deepseek_api_key_b64 DEEPSEEK_MODEL_B64=$deepseek_model_b64 RELEASE_IMAGE_MODE=$RELEASE_IMAGE_MODE bash -se" <<'REMOTE'
             set -euo pipefail
             app_dir="$HOME/apps/a2a-platform"
             update_env_value() {
@@ -186,7 +201,7 @@ jobs:
                 "$(printf '%s' "$DEEPSEEK_MODEL_B64" | base64 --decode)"
             fi
             git pull --ff-only origin main
-            if [ "${RELEASE_IMAGES:-true}" = "true" ]; then
+            if [ "${RELEASE_IMAGE_MODE:-all}" != "none" ]; then
               gzip --decompress --stdout /tmp/a2a-platform-images.tar.gz | sudo docker load
               rm -f /tmp/a2a-platform-images.tar.gz
             else
