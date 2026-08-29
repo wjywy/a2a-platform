@@ -62,6 +62,11 @@ export type Intent = {
   missing?: string[];
   confidence?: number;
 };
+/**
+ * The built-in A2A route emits these hooks as DeepSeek produces content so the
+ * Studio transport can render a real incremental reply instead of a delayed
+ * single final Task.
+ */
 export type SymbolMessageStreamHooks = {
   /** Announces the server task before the Agent starts collecting evidence. */
   onStart?: (session: { taskId: string; contextId: string }) => void | Promise<void>;
