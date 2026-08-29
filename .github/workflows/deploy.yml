@@ -94,10 +94,39 @@ jobs:
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
         run: |
-          ssh "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
+          # Encode optional model credentials before handing them to SSH. The
+          # remote script only updates .env when a non-empty repository secret
+          # exists, so a missing secret cannot erase a working production key.
+          deepseek_api_key_b64="$(printf '%s' "$DEEPSEEK_API_KEY" | base64 -w 0)"
+          deepseek_model_b64="$(printf '%s' "$DEEPSEEK_MODEL" | base64 -w 0)"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEEPSEEK_API_KEY_B64=$deepseek_api_key_b64 DEEPSEEK_MODEL_B64=$deepseek_model_b64 bash -se" <<'REMOTE'
             set -euo pipefail
             app_dir="$HOME/apps/a2a-platform"
+            update_env_value() {
+              local key="$1"
+              local value="$2"
+              local temp_env
+              temp_env="$(mktemp .env.XXXXXX)"
+              chmod 600 "$temp_env"
+              awk -v target_key="$key" -v target_value="$value" '
+                index($0, target_key "=") == 1 {
+                  if (!updated) {
+                    print target_key "=" target_value
+                    updated = 1
+                  }
+                  next
+                }
+                { print }
+                END {
+                  if (!updated) print target_key "=" target_value
+                }
+              ' .env > "$temp_env"
+              mv "$temp_env" .env
+            }
             diagnose_deploy_failure() {
               local status=$?
               echo "::error::Remote deployment failed; collecting container diagnostics."
@@ -113,6 +142,16 @@ jobs:
             }
             trap diagnose_deploy_failure ERR
             cd "$app_dir"
+            if [ -n "${DEEPSEEK_API_KEY_B64:-}" ]; then
+              update_env_value \
+                DEEPSEEK_API_KEY \
+                "$(printf '%s' "$DEEPSEEK_API_KEY_B64" | base64 --decode)"
+            fi
+            if [ -n "${DEEPSEEK_MODEL_B64:-}" ]; then
+              update_env_value \
+                DEEPSEEK_MODEL \
+                "$(printf '%s' "$DEEPSEEK_MODEL_B64" | base64 --decode)"
+            fi
             git pull --ff-only origin main
             sudo docker load -i /tmp/a2a-platform-images.tar
             sudo docker compose --env-file .env \
