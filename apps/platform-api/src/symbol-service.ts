@@ -62,6 +62,17 @@ export type Intent = {
   missing?: string[];
   confidence?: number;
 };
+export type SymbolMessageStreamHooks = {
+  /** Announces the server task before the Agent starts collecting evidence. */
+  onStart?: (session: { taskId: string; contextId: string }) => void | Promise<void>;
+  /** Receives a new model text delta while the final reply is being generated. */
+  onDelta?: (
+    delta: string,
+    session: { taskId: string; contextId: string },
+  ) => void | Promise<void>;
+  /** Propagates client disconnects through the model request. */
+  signal?: AbortSignal;
+};
 
 const intentSchema = z
   .object({
@@ -346,6 +357,10 @@ type ResearchResponseInput = {
   intent: Intent;
   result: { text: string; data: Json };
 };
+type ResearchResponseOptions = {
+  onDelta?: (delta: string) => void | Promise<void>;
+  signal?: AbortSignal;
+};
 
 function compactModelContext(value: unknown, maxLength: number) {
   const text = JSON.stringify(value);
@@ -356,8 +371,49 @@ function compactModelContext(value: unknown, maxLength: number) {
  * Tool nodes collect deterministic evidence. The user-facing answer must be
  * generated from the latest turn and that evidence, not returned as a template.
  */
+function deepSeekStreamDelta(block: string): string | undefined {
+  const data = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n");
+  if (!data || data === "[DONE]") return;
+  let payload: {
+    choices?: Array<{ delta?: { content?: unknown } }>;
+  };
+  try {
+    payload = JSON.parse(data);
+  } catch {
+    throw new Error("DeepSeek 流式响应格式无效。");
+  }
+  const delta = payload.choices?.[0]?.delta?.content;
+  return typeof delta === "string" && delta ? delta : undefined;
+}
+
+async function* deepSeekTextDeltas(response: Response) {
+  if (!response.body) throw new Error("DeepSeek 未返回流式响应体。");
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += value;
+    while (true) {
+      const match = buffer.match(/\r?\n\r?\n/);
+      if (!match || match.index === undefined) break;
+      const block = buffer.slice(0, match.index);
+      buffer = buffer.slice(match.index + match[0].length);
+      const delta = deepSeekStreamDelta(block);
+      if (delta) yield delta;
+    }
+  }
+  const delta = deepSeekStreamDelta(buffer);
+  if (delta) yield delta;
+}
+
 async function generateResearchResponse(
   input: ResearchResponseInput,
+  options: ResearchResponseOptions = {},
 ): Promise<string> {
   if (!config.deepseekApiKey) {
     throw new Error(
@@ -387,6 +443,7 @@ async function generateResearchResponse(
       model: config.deepseekModel,
       temperature: 0.35,
       max_tokens: 1_200,
+      ...(options.onDelta ? { stream: true } : {}),
       messages: [
         { role: "system", content: system },
         ...recentTranscript,
@@ -396,10 +453,24 @@ async function generateResearchResponse(
         },
       ],
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: options.signal
+      ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)])
+      : AbortSignal.timeout(30_000),
   });
   if (!response.ok)
     throw new Error(`DeepSeek 回复生成失败（HTTP ${response.status}）。`);
+  if (options.onDelta) {
+    let text = "";
+    for await (const delta of deepSeekTextDeltas(response)) {
+      text += delta;
+      await options.onDelta(delta);
+    }
+    if (!text.trim()) throw new Error("DeepSeek 未返回可展示的流式回复。");
+    // Keep the terminal Task byte-for-byte aligned with the accumulated
+    // deltas. Trimming here would make the UI treat the final snapshot as a
+    // divergent message when a provider starts or ends with whitespace.
+    return text;
+  }
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
@@ -939,6 +1010,7 @@ export async function handleSymbolMessage(
   slug: SymbolAgentSlug,
   tenantId: string,
   body: unknown,
+  hooks: SymbolMessageStreamHooks = {},
 ) {
   const incoming = userText(body);
   if (!incoming.text)
@@ -951,6 +1023,7 @@ export async function handleSymbolMessage(
   const taskId = current?.task_id ?? crypto.randomUUID();
   const contextId =
     current?.context_id ?? incoming.contextId ?? crypto.randomUUID();
+  await hooks.onStart?.({ taskId, contextId });
   const intent = await extractIntent(
     incoming.text,
     current?.intent ?? {},
@@ -1007,6 +1080,11 @@ export async function handleSymbolMessage(
       transcript,
       intent,
       result,
+    }, {
+      signal: hooks.signal,
+      onDelta: hooks.onDelta
+        ? (delta) => hooks.onDelta?.(delta, { taskId, contextId })
+        : undefined,
     });
     transcript.push({ role: "agent", text: answer, at: now() });
     await saveConversation({

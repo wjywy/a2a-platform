@@ -162,6 +162,61 @@ describe("bundled Symbol A2A agents", () => {
     }
   });
 
+  it("forwards DeepSeek SSE text deltas while retaining the complete reply", async () => {
+    const originalKey = config.deepseekApiKey;
+    const originalModel = config.deepseekModel;
+    config.deepseekApiKey = "test-key";
+    config.deepseekModel = "test-model";
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                'data: {"choices":[{"delta":{"content":" 第一段"}}]}\n\n',
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                'data: {"choices":[{"delta":{"content":"，第二段 "}}]}\n\n',
+              ),
+            );
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const deltas: string[] = [];
+    try {
+      const reply = await __symbolServiceInternals.generateResearchResponse(
+        {
+          slug: "symbol-market",
+          userMessage: "请简要分析 AAPL",
+          transcript: [],
+          intent: { symbol: "AAPL", missing: [] },
+          result: { text: "AAPL 行情证据", data: { symbol: "AAPL" } },
+        },
+        {
+          onDelta: (delta) => {
+            deltas.push(delta);
+          },
+        },
+      );
+      expect(deltas).toEqual([" 第一段", "，第二段 "]);
+      expect(reply).toBe(" 第一段，第二段 ");
+      const request = fetchMock.mock.calls[0]?.[1] as { body: string };
+      expect(JSON.parse(request.body).stream).toBe(true);
+    } finally {
+      config.deepseekApiKey = originalKey;
+      config.deepseekModel = originalModel;
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("fails clearly when no model is configured instead of using a fixed reply", async () => {
     const originalKey = config.deepseekApiKey;
     config.deepseekApiKey = "";

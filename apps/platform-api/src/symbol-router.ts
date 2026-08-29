@@ -5,6 +5,7 @@ import {
   SSE_HEADERS,
   StreamResponse,
   Task,
+  TaskStatusUpdateEvent,
 } from "@a2a-js/sdk";
 import { asyncHandler } from "./http.js";
 import { config } from "./config.js";
@@ -33,6 +34,42 @@ function requireInternal(req: import("express").Request) {
     throw error;
   }
 }
+
+function streamingStatusEvent(input: {
+  taskId: string;
+  contextId: string;
+  text?: string;
+}) {
+  const message = input.text
+    ? {
+        messageId: crypto.randomUUID(),
+        taskId: input.taskId,
+        contextId: input.contextId,
+        role: "ROLE_AGENT",
+        parts: [{ text: input.text }],
+        metadata: {},
+        extensions: [],
+        referenceTaskIds: [],
+      }
+    : undefined;
+  return StreamResponse.toJSON({
+    payload: {
+      $case: "statusUpdate",
+      value: TaskStatusUpdateEvent.fromJSON({
+        taskId: input.taskId,
+        contextId: input.contextId,
+        status: {
+          state: "TASK_STATE_WORKING",
+          message,
+          timestamp: new Date().toISOString(),
+        },
+        metadata: { streaming: true },
+      }),
+    },
+  });
+}
+
+export const __symbolRouterInternals = { streamingStatusEvent };
 
 router.options(
   "/api/builtin/symbol/:slug/:tenant/message\\:send",
@@ -116,8 +153,27 @@ async function stream(
   );
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
+  const streamController = new AbortController();
+  const abortStream = () => streamController.abort();
+  res.once("close", abortStream);
+  let emitted = "";
   try {
-    const result = await handleSymbolMessage(slug, tenantId, req.body);
+    const result = await handleSymbolMessage(slug, tenantId, req.body, {
+      signal: streamController.signal,
+      onStart: ({ taskId, contextId }) => {
+        res.write(
+          formatSSEEvent(streamingStatusEvent({ taskId, contextId })),
+        );
+      },
+      onDelta: (delta, { taskId, contextId }) => {
+        emitted += delta;
+        res.write(
+          formatSSEEvent(
+            streamingStatusEvent({ taskId, contextId, text: emitted }),
+          ),
+        );
+      },
+    });
     // `handleSymbolMessage` deliberately returns the portable A2A JSON shape.
     // Rehydrate it before protobuf serialization; passing a plain object here
     // makes the SDK emit `UNRECOGNIZED` enums and empty parts, which in turn
@@ -129,8 +185,9 @@ async function stream(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Symbol Agent 流式调用失败。";
-    res.write(formatSSEEvent({ error: { message } }));
+    if (!res.destroyed) res.write(formatSSEEvent({ error: { message } }));
   } finally {
+    res.off("close", abortStream);
     res.end();
   }
 }
