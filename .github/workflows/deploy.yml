@@ -78,9 +78,13 @@ jobs:
           # GitHub runner and transfer the tagged images over the existing SSH
           # deployment channel instead.
           docker compose -f infra/docker-compose.yml build
+          # docker save emits uncompressed layer tars. Compressing them on the
+          # runner keeps a constrained production link from spending many
+          # minutes transferring duplicate Node and OS filesystem contents.
           docker save \
-            -o "$RUNNER_TEMP/a2a-platform-images.tar" \
-            infra-api infra-migrate infra-worker infra-console
+            infra-api infra-migrate infra-worker infra-console \
+            | gzip -1 > "$RUNNER_TEMP/a2a-platform-images.tar.gz"
+          du -h "$RUNNER_TEMP/a2a-platform-images.tar.gz"
 
       - name: Transfer release images
         env:
@@ -96,8 +100,8 @@ jobs:
             -o ConnectTimeout=30 \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=4 \
-            "$RUNNER_TEMP/a2a-platform-images.tar" \
-            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/a2a-platform-images.tar"
+            "$RUNNER_TEMP/a2a-platform-images.tar.gz" \
+            "$DEPLOY_USER@$DEPLOY_HOST:/tmp/a2a-platform-images.tar.gz"
 
       - name: Deploy
         env:
@@ -162,7 +166,8 @@ jobs:
                 "$(printf '%s' "$DEEPSEEK_MODEL_B64" | base64 --decode)"
             fi
             git pull --ff-only origin main
-            sudo docker load -i /tmp/a2a-platform-images.tar
+            gzip --decompress --stdout /tmp/a2a-platform-images.tar.gz | sudo docker load
+            rm -f /tmp/a2a-platform-images.tar.gz
             sudo docker compose --env-file .env \
               -f infra/docker-compose.yml \
               -f infra/docker-compose.prod.yml \
