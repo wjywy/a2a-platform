@@ -58,6 +58,23 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine release payload
+        id: release_payload
+        run: |
+          # Workflow-only changes (such as rotating or adding optional runtime
+          # configuration) can safely reuse the image already on the server.
+          # Application, infrastructure, or dependency changes still publish
+          # a fresh image set from the GitHub runner.
+          if [ "${{ github.event_name }}" = "push" ] \
+            && git diff --quiet "${{ github.event.before }}" "${{ github.sha }}" -- \
+              . ':(exclude).github/workflows/deploy.yml'; then
+            echo "images=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "images=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Configure SSH
         env:
@@ -72,6 +89,7 @@ jobs:
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
       - name: Build release images on the runner
+        if: steps.release_payload.outputs.images == 'true'
         run: |
           # The production instance has 1.8 GiB RAM and no swap. Building
           # Node images there OOM-killed Postgres and the API, so build on the
@@ -87,6 +105,7 @@ jobs:
           du -h "$RUNNER_TEMP/a2a-platform-images.tar.gz"
 
       - name: Transfer release images
+        if: steps.release_payload.outputs.images == 'true'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -109,6 +128,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
+          RELEASE_IMAGES: ${{ steps.release_payload.outputs.images }}
         run: |
           # Encode optional model credentials before handing them to SSH. The
           # remote script only updates .env when a non-empty repository secret
@@ -116,7 +136,7 @@ jobs:
           deepseek_api_key_b64="$(printf '%s' "$DEEPSEEK_API_KEY" | base64 -w 0)"
           deepseek_model_b64="$(printf '%s' "$DEEPSEEK_MODEL" | base64 -w 0)"
           ssh "$DEPLOY_USER@$DEPLOY_HOST" \
-            "DEEPSEEK_API_KEY_B64=$deepseek_api_key_b64 DEEPSEEK_MODEL_B64=$deepseek_model_b64 bash -se" <<'REMOTE'
+            "DEEPSEEK_API_KEY_B64=$deepseek_api_key_b64 DEEPSEEK_MODEL_B64=$deepseek_model_b64 RELEASE_IMAGES=$RELEASE_IMAGES bash -se" <<'REMOTE'
             set -euo pipefail
             app_dir="$HOME/apps/a2a-platform"
             update_env_value() {
@@ -166,8 +186,14 @@ jobs:
                 "$(printf '%s' "$DEEPSEEK_MODEL_B64" | base64 --decode)"
             fi
             git pull --ff-only origin main
-            gzip --decompress --stdout /tmp/a2a-platform-images.tar.gz | sudo docker load
-            rm -f /tmp/a2a-platform-images.tar.gz
+            if [ "${RELEASE_IMAGES:-true}" = "true" ]; then
+              gzip --decompress --stdout /tmp/a2a-platform-images.tar.gz | sudo docker load
+              rm -f /tmp/a2a-platform-images.tar.gz
+            else
+              # Clear interrupted transfer payloads before reusing the already
+              # deployed image set for a configuration-only release.
+              rm -f /tmp/a2a-platform-images.tar /tmp/a2a-platform-images.tar.gz
+            fi
             sudo docker compose --env-file .env \
               -f infra/docker-compose.yml \
               -f infra/docker-compose.prod.yml \
