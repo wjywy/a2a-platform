@@ -20,7 +20,7 @@ import {
   getTaskDetail,
   markTaskCancelled,
 } from "./task-service.js";
-import { handleSymbolMessage } from "./symbol-service.js";
+import { handleSymbolMessage, symbolAgentSlugs } from "./symbol-service.js";
 import {
   conversationToJson,
   conversationToMarkdown,
@@ -299,6 +299,25 @@ describe("bundled Agent runtime migration", () => {
       });
     } finally {
       config.symbolInternalToken = previousToken;
+    }
+  });
+});
+
+describe("bundled Symbol Agent discovery", () => {
+  it("serves every built-in Agent Card from its interface base URL", async () => {
+    const app = createApp();
+    for (const slug of symbolAgentSlugs) {
+      const response = await request(app).get(`/api/builtin/symbol/${slug}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.link).toBe(
+        `</api/builtin/symbol/${slug}/.well-known/agent-card.json>; rel="agent-card"`,
+      );
+      expect(response.body.supportedInterfaces).toContainEqual(
+        expect.objectContaining({
+          url: `${config.platformOrigin}/api/builtin/symbol/${slug}`,
+          protocolBinding: "HTTP+JSON",
+        }),
+      );
     }
   });
 });

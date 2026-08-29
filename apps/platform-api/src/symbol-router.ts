@@ -50,16 +50,26 @@ router.options("/api/builtin/symbol/:slug/message\\:stream", (_req, res) =>
 );
 router.options("/api/builtin/symbol/:slug", (_req, res) => res.sendStatus(204));
 
+function serveCard(
+  req: import("express").Request,
+  res: import("express").Response,
+): void {
+  const slug = String(req.params.slug);
+  if (!isSymbolAgentSlug(slug)) {
+    res.status(404).json({ error: "Agent 不存在" });
+    return;
+  }
+  res.setHeader(
+    "Link",
+    `</api/builtin/symbol/${slug}/.well-known/agent-card.json>; rel="agent-card"`,
+  );
+  res.json(AgentCard.toJSON(AgentCard.fromJSON(symbolCard(slug))));
+}
+
+router.get("/api/builtin/symbol/:slug", serveCard);
 router.get(
   "/api/builtin/symbol/:slug/.well-known/agent-card.json",
-  (req, res) => {
-    const slug = String(req.params.slug);
-    if (!isSymbolAgentSlug(slug)) {
-      res.status(404).json({ error: "Agent 不存在" });
-      return;
-    }
-    res.json(AgentCard.toJSON(AgentCard.fromJSON(symbolCard(slug))));
-  },
+  serveCard,
 );
 
 async function send(
