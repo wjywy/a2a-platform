@@ -16,6 +16,7 @@ import {
   createLimitedFetch,
   readLimitedResponseText,
   secureFetch,
+  secureFetchWithPolicy,
 } from "./secure-fetch.js";
 import { config } from "./config.js";
 import {
@@ -152,11 +153,15 @@ export async function resolveRemoteCard(
       purpose: "agent_card",
       allowPrivate,
     });
-    const response = await secureFetch(target, {
-      redirect: "manual",
-      signal: AbortSignal.timeout(10_000),
-      headers: { accept: "application/json", ...credentialHeaders(credential) },
-    });
+    const response = await secureFetchWithPolicy(
+      target,
+      {
+        redirect: "manual",
+        signal: AbortSignal.timeout(10_000),
+        headers: { accept: "application/json", ...credentialHeaders(credential) },
+      },
+      { allowPrivate },
+    );
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (!location) throw new Error("Agent Card 重定向缺少 Location。");

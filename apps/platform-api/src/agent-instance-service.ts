@@ -18,7 +18,7 @@ import {
   allowPrivateOutboundTargets,
   assertSafeOutboundUrl,
 } from "./url-policy.js";
-import { secureFetch } from "./secure-fetch.js";
+import { secureFetchWithPolicy } from "./secure-fetch.js";
 import type { PlatformAgent } from "./types.js";
 
 export const createInstanceSchema = z.object({
@@ -283,12 +283,18 @@ export async function checkAgentInstance(
       allowPrivate:
         allowPrivateOutboundTargets() || isTrustedSymbolInternalUrl(endpoint),
     });
-    const response = await secureFetch(endpoint, {
-      method: "OPTIONS",
-      redirect: "manual",
-      headers: credentialHeaders(credential),
-      signal: AbortSignal.timeout(10_000),
-    });
+    const endpointAllowPrivate =
+      allowPrivateOutboundTargets() || isTrustedSymbolInternalUrl(endpoint);
+    const response = await secureFetchWithPolicy(
+      endpoint,
+      {
+        method: "OPTIONS",
+        redirect: "manual",
+        headers: credentialHeaders(credential),
+        signal: AbortSignal.timeout(10_000),
+      },
+      { allowPrivate: endpointAllowPrivate },
+    );
     if (!(response.ok || response.status === 405))
       throw new Error(`A2A 接口返回 HTTP ${response.status}`);
     ok = true;
