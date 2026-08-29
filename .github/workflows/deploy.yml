@@ -216,3 +216,52 @@ jobs:
               -f infra/docker-compose.yml \
               -f infra/docker-compose.prod.yml ps
           REMOTE
+
+      - name: Verify DeepSeek production credential
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          # Validate only that the server has a non-empty credential. Never
+          # print the value or pass it through the GitHub Actions log.
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
+            set -euo pipefail
+            cd "$HOME/apps/a2a-platform"
+            if ! grep -Eq '^DEEPSEEK_API_KEY=.+$' .env; then
+              echo '::error::Production DEEPSEEK_API_KEY is missing or empty.'
+              exit 1
+            fi
+          REMOTE
+
+      - name: Smoke test built-in Agent with real model
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          # Run through the production A2A boundary with the server-only
+          # token and an active tenant. This proves the provider request and
+          # final answer path rather than merely checking configuration.
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
+            set -euo pipefail
+            app_dir="$HOME/apps/a2a-platform"
+            cd "$app_dir"
+            symbol_token="$(sed -n 's/^SYMBOL_INTERNAL_TOKEN=//p' .env | head -n 1)"
+            test -n "$symbol_token"
+            tenant_id="$(sudo docker compose --env-file .env \
+              -f infra/docker-compose.yml -f infra/docker-compose.prod.yml \
+              exec -T postgres psql -U platform -d a2a_platform -Atc \
+              "SELECT id FROM tenants WHERE slug='default' AND status='active' LIMIT 1;")"
+            test -n "$tenant_id"
+            message_id="$(cat /proc/sys/kernel/random/uuid)"
+            response="$(curl --fail --silent --show-error --max-time 90 \
+              -H "authorization: Bearer $symbol_token" \
+              -H 'content-type: application/json' \
+              --data "{\"message\":{\"messageId\":\"$message_id\",\"role\":\"ROLE_USER\",\"parts\":[{\"text\":\"请分析 AAPL 的短线风险，并用中文简洁回答。\"}]}}" \
+              "http://127.0.0.1:8080/api/builtin/symbol/symbol-market/$tenant_id/message:send")"
+            printf '%s' "$response" | grep -q '"state":"TASK_STATE_COMPLETED"'
+            if printf '%s' "$response" | grep -Fq 'AI 回复服务未配置'; then
+              echo '::error::Built-in Agent reported an unconfigured AI response service.'
+              exit 1
+            fi
+            echo 'Built-in Agent real-model smoke test passed.'
+          REMOTE
