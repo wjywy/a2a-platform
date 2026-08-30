@@ -54,6 +54,7 @@ export type SymbolConversationDetail = SymbolConversationSummary & {
 };
 export type Intent = {
   symbol?: string;
+  companyName?: string;
   assetType?: "stock" | "etf" | "index" | "crypto";
   market?: string;
   period?: string;
@@ -70,7 +71,10 @@ export type Intent = {
  */
 export type SymbolMessageStreamHooks = {
   /** Announces the server task before the Agent starts collecting evidence. */
-  onStart?: (session: { taskId: string; contextId: string }) => void | Promise<void>;
+  onStart?: (session: {
+    taskId: string;
+    contextId: string;
+  }) => void | Promise<void>;
   /** Receives a new model text delta while the final reply is being generated. */
   onDelta?: (
     delta: string,
@@ -88,6 +92,7 @@ const intentSchema = z
       .toUpperCase()
       .regex(/^[A-Z0-9.^-]{1,18}$/)
       .optional(),
+    companyName: z.string().trim().max(200).optional(),
     assetType: z.enum(["stock", "etf", "index", "crypto"]).optional(),
     market: z.string().trim().max(40).optional(),
     period: z.string().trim().max(80).optional(),
@@ -272,37 +277,112 @@ export const __symbolServiceInternals = {
   nasdaqHistoryToChart,
   nasdaqInfoToSearch,
   parseNasdaqNumber,
+  extractIntent,
+  providerSymbolForCompany,
   generateResearchResponse,
 };
+
+function normalizedSearchText(value: string) {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+/**
+ * Resolves a company name only when the market search response provides a
+ * unique name match. The model is never trusted to invent a security code.
+ */
+function providerSymbolForCompany(queryText: string, raw: Json) {
+  const query = normalizedSearchText(queryText);
+  if (!query) return undefined;
+  const rows = Array.isArray(raw.quotes) ? raw.quotes : [];
+  const candidates = rows
+    .map((row) => {
+      if (!row || typeof row !== "object") return undefined;
+      const item = row as Json;
+      const symbol = String(item.symbol ?? "")
+        .trim()
+        .toUpperCase();
+      if (!/^[A-Z0-9.^-]{1,18}$/.test(symbol)) return undefined;
+      const names = [item.shortname, item.longname]
+        .filter((value): value is string => typeof value === "string")
+        .map(normalizedSearchText)
+        .filter(Boolean);
+      return { symbol, names };
+    })
+    .filter((value): value is { symbol: string; names: string[] } =>
+      Boolean(value),
+    );
+  const exactSymbol = candidates.filter(
+    (candidate) => normalizedSearchText(candidate.symbol) === query,
+  );
+  if (exactSymbol.length === 1) return exactSymbol[0].symbol;
+  const nameMatches = candidates.filter((candidate) =>
+    candidate.names.some((name) => name === query || name.includes(query)),
+  );
+  return nameMatches.length === 1 ? nameMatches[0].symbol : undefined;
+}
+
+async function resolveCompanyName(intent: Intent): Promise<Intent> {
+  if (intent.symbol || !intent.companyName?.trim()) return intent;
+  try {
+    const result = providerSymbolForCompany(
+      intent.companyName,
+      await search(intent.companyName),
+    );
+    return result ? { ...intent, symbol: result } : intent;
+  } catch (error) {
+    console.warn(
+      "Symbol company-name resolution failed:",
+      error instanceof Error ? error.message : error,
+    );
+    return intent;
+  }
+}
+
+function explicitTickerFromText(text: string) {
+  return text.match(
+    /(?:^|\s|[$（(])([A-Z][A-Z0-9.^-]{0,17})(?=$|\s|[$）),，。！？!?]|[\u4e00-\u9fff])/u,
+  )?.[1];
+}
+
+function companyNameFromText(text: string) {
+  const latin = text
+    .match(
+      /(?:^|\s|[（(])([A-Za-z][A-Za-z0-9 .&'-]{1,79}?)(?=$|\s|[）),，。！？!?])/u,
+    )?.[1]
+    ?.trim();
+  if (latin && !/^[A-Z0-9.^-]{1,18}$/.test(latin)) return latin;
+  const trimmed = text.trim();
+  return trimmed.length <= 80 && !/[，。！？!?]/u.test(trimmed)
+    ? trimmed
+    : undefined;
+}
 
 async function extractIntent(
   text: string,
   prior: Intent,
   slug: SymbolAgentSlug,
 ): Promise<Intent> {
+  const explicitTicker = explicitTickerFromText(text)?.toUpperCase();
   if (!config.deepseekApiKey) {
-    // This is deliberately not a company-name mapping. It only accepts a
-    // ticker the user explicitly typed, so offline/dev mode never guesses a
-    // security from natural language.
-    const explicitTicker = text
-      .match(
-        /(?:^|\s|[（(])([A-Za-z]{1,10}(?:[.-][A-Za-z]{1,6})?)(?=$|\s|[）),，。！？!?])/u,
-      )?.[1]
-      ?.toUpperCase();
     const merged = {
       ...prior,
       ...(explicitTicker ? { symbol: explicitTicker } : {}),
+      ...(!explicitTicker ? { companyName: companyNameFromText(text) } : {}),
       question: text,
     };
+    const resolved = await resolveCompanyName(merged);
     return {
-      ...merged,
+      ...resolved,
       missing: definitions[slug].needs.filter(
-        (key) => !merged[key as keyof Intent],
+        (key) => !resolved[key as keyof Intent],
       ),
       confidence: 0,
     };
   }
-  const prompt = `你是金融研究 Agent 的意图解析器。只返回 JSON，不要解释。不得猜测或把公司名称映射为代码；没有确定代码时 symbol 留空。\n用户消息：${text}\n已有上下文：${JSON.stringify(prior)}\n任务：${definitions[slug].description}\nJSON字段：symbol(交易代码), assetType(stock|etf|index|crypto), market, period, question, thesis, missing(string数组，仅 symbol/period/thesis/question), confidence(0-1)。`;
+  const prompt = `你是金融研究 Agent 的意图解析器。只返回 JSON，不要解释。symbol 只有在用户明确写出交易代码时填写；如果用户给的是公司名称，填写 companyName 原文，不要自行把公司名称映射为代码。\n用户消息：${text}\n已有上下文：${JSON.stringify(prior)}\n任务：${definitions[slug].description}\nJSON字段：symbol(用户明确写出的交易代码), companyName(用户明确提到的公司名称), assetType(stock|etf|index|crypto), market, period, question, thesis, missing(string数组，仅 symbol/period/thesis/question), confidence(0-1)。`;
   try {
     const response = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
@@ -336,22 +416,29 @@ async function extractIntent(
         ),
       ),
     };
-    merged.missing = definitions[slug].needs.filter(
-      (key) => !merged[key as keyof Intent],
+    const resolved = await resolveCompanyName(merged);
+    resolved.missing = definitions[slug].needs.filter(
+      (key) => !resolved[key as keyof Intent],
     );
-    return merged;
+    return resolved;
   } catch (error) {
     console.warn(
       "Symbol intent extraction failed:",
       error instanceof Error ? error.message : error,
     );
-    return {
+    const fallback = {
       ...prior,
+      ...(explicitTicker ? { symbol: explicitTicker } : {}),
+      ...(!explicitTicker ? { companyName: companyNameFromText(text) } : {}),
       question: text,
-      missing: definitions[slug].needs.filter(
-        (key) => !prior[key as keyof Intent],
-      ),
       confidence: 0,
+    };
+    const resolved = await resolveCompanyName(fallback);
+    return {
+      ...resolved,
+      missing: definitions[slug].needs.filter(
+        (key) => !resolved[key as keyof Intent],
+      ),
     };
   }
 }
@@ -656,7 +743,9 @@ function nasdaqHistoryToChart(payload: Json): Json {
       volume: parseNasdaqNumber(row.volume),
     }))
     .filter(
-      (point): point is {
+      (
+        point,
+      ): point is {
         timestamp: number;
         close: number;
         high: number | null;
@@ -794,7 +883,7 @@ async function search(symbol: string) {
     withMarketFallback(
       () =>
         yahoo(
-          `/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=1&newsCount=12`,
+          `/v1/finance/search?q=${encodeURIComponent(symbol)}&quotesCount=10&newsCount=12`,
         ),
       async () =>
         nasdaqInfoToSearch(
@@ -1080,18 +1169,21 @@ export async function handleSymbolMessage(
       },
       (nodeSlug) => runAnalysis(nodeSlug as SymbolAgentSlug, intent),
     );
-    const answer = await generateResearchResponse({
-      slug,
-      userMessage: incoming.text,
-      transcript,
-      intent,
-      result,
-    }, {
-      signal: hooks.signal,
-      onDelta: hooks.onDelta
-        ? (delta) => hooks.onDelta?.(delta, { taskId, contextId })
-        : undefined,
-    });
+    const answer = await generateResearchResponse(
+      {
+        slug,
+        userMessage: incoming.text,
+        transcript,
+        intent,
+        result,
+      },
+      {
+        signal: hooks.signal,
+        onDelta: hooks.onDelta
+          ? (delta) => hooks.onDelta?.(delta, { taskId, contextId })
+          : undefined,
+      },
+    );
     transcript.push({ role: "agent", text: answer, at: now() });
     await saveConversation({
       task_id: taskId,

@@ -8,6 +8,10 @@ import {
   taskJson,
 } from "./symbol-service.js";
 
+vi.mock("./redis.js", () => ({
+  getRedis: vi.fn().mockResolvedValue(undefined),
+}));
+
 describe("bundled Symbol A2A agents", () => {
   it("publishes seven valid, discoverable A2A cards", () => {
     expect(symbolAgentSlugs).toHaveLength(7);
@@ -49,6 +53,69 @@ describe("bundled Symbol A2A agents", () => {
         },
       }).text,
     ).toBe("分析 TSLA");
+  });
+
+  it("resolves a company-name follow-up before deciding the symbol is missing", async () => {
+    const originalKey = config.deepseekApiKey;
+    const originalModel = config.deepseekModel;
+    config.deepseekApiKey = "test-key";
+    config.deepseekModel = "test-model";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    companyName: "apple",
+                    missing: ["symbol"],
+                    confidence: 0.99,
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            quotes: [
+              {
+                symbol: "AAPL",
+                shortname: "Apple Inc.",
+                longname: "Apple Inc.",
+              },
+            ],
+            news: [],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const intent = await __symbolServiceInternals.extractIntent(
+        "apple",
+        {},
+        "symbol-market",
+      );
+      expect(intent).toMatchObject({
+        companyName: "apple",
+        symbol: "AAPL",
+        missing: [],
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
+        "q=apple&quotesCount=10",
+      );
+    } finally {
+      config.deepseekApiKey = originalKey;
+      config.deepseekModel = originalModel;
+      vi.unstubAllGlobals();
+    }
   });
 
   it("normalizes Nasdaq history into the provider-neutral chart shape", () => {
