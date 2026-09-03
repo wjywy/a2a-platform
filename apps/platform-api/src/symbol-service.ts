@@ -84,20 +84,92 @@ export type SymbolMessageStreamHooks = {
   signal?: AbortSignal;
 };
 
+const intentText = (maxLength: number) =>
+  z.preprocess(
+    (value) =>
+      value === null || (typeof value === "string" && value.trim().length === 0)
+        ? undefined
+        : value,
+    z.string().trim().max(maxLength).optional(),
+  );
+
+/**
+ * DeepSeek Chat Completions exposes strict JSON Schema through a required
+ * function tool. Empty strings are used for absent optional values so the
+ * schema remains compatible with strict function-call validation.
+ */
+const intentJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    symbol: {
+      type: "string",
+      pattern: "^(?:[A-Za-z0-9.^-]{1,18})?$",
+      description:
+        "交易代码。用户没有明确代码且无法高置信度确定时返回空字符串。",
+    },
+    companyName: {
+      type: "string",
+      description: "用户明确提到的公司或标的名称，没有则返回空字符串。",
+    },
+    assetType: {
+      type: "string",
+      enum: ["stock", "etf", "index", "crypto", ""],
+    },
+    market: { type: "string" },
+    period: { type: "string" },
+    question: { type: "string" },
+    thesis: { type: "string" },
+    missing: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["symbol", "period", "thesis", "question"],
+      },
+    },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+  },
+  required: [
+    "symbol",
+    "companyName",
+    "assetType",
+    "market",
+    "period",
+    "question",
+    "thesis",
+    "missing",
+    "confidence",
+  ],
+} as const;
+
 const intentSchema = z
   .object({
-    symbol: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .regex(/^[A-Z0-9.^-]{1,18}$/)
-      .optional(),
-    companyName: z.string().trim().max(200).optional(),
-    assetType: z.enum(["stock", "etf", "index", "crypto"]).optional(),
-    market: z.string().trim().max(40).optional(),
-    period: z.string().trim().max(80).optional(),
-    question: z.string().trim().max(1000).optional(),
-    thesis: z.string().trim().max(2000).optional(),
+    symbol: z.preprocess(
+      (value) =>
+        value === null ||
+        (typeof value === "string" && value.trim().length === 0)
+          ? undefined
+          : value,
+      z
+        .string()
+        .trim()
+        .toUpperCase()
+        .regex(/^[A-Z0-9.^-]{1,18}$/)
+        .optional(),
+    ),
+    companyName: intentText(200),
+    assetType: z.preprocess(
+      (value) =>
+        value === null ||
+        (typeof value === "string" && value.trim().length === 0)
+          ? undefined
+          : value,
+      z.enum(["stock", "etf", "index", "crypto"]).optional(),
+    ),
+    market: intentText(40),
+    period: intentText(80),
+    question: intentText(1000),
+    thesis: intentText(2000),
     missing: z
       .array(z.enum(["symbol", "period", "thesis", "question"]))
       .max(4)
@@ -105,6 +177,17 @@ const intentSchema = z
     confidence: z.number().min(0).max(1).default(0),
   })
   .strict();
+
+const intentExtractionTool = {
+  type: "function",
+  function: {
+    name: "extract_symbol_intent",
+    description:
+      "从用户最新消息和已有会话上下文中提取金融研究所需的信息。只能返回结构化参数，不要回答用户。",
+    parameters: intentJsonSchema,
+    strict: true,
+  },
+} as const;
 
 const definitions: Record<
   SymbolAgentSlug,
@@ -221,14 +304,12 @@ export function taskJson(input: {
   };
 }
 
-function missingQuestion(slug: SymbolAgentSlug, missing: string[]) {
-  const labels: Record<string, string> = {
-    symbol: "要分析的标的（代码或公司名称）",
-    period: "分析周期",
-    thesis: "你的投资观点或假设",
-    question: "你想回答的问题",
-  };
-  return `为了继续${definitions[slug].name}，请补充：${missing.map((key) => labels[key] ?? key).join("、")}。你可以直接用自然语言回答。`;
+function missingIntentFields(slug: SymbolAgentSlug, intent: Intent) {
+  return definitions[slug].needs.filter((key) => {
+    if (key === "symbol")
+      return !intent.symbol?.trim() && !intent.companyName?.trim();
+    return !intent[key as keyof Intent];
+  });
 }
 
 function userText(body: unknown): {
@@ -280,6 +361,9 @@ export const __symbolServiceInternals = {
   extractIntent,
   providerSymbolForCompany,
   generateResearchResponse,
+  generateClarificationResponse,
+  missingIntentFields,
+  intentJsonSchema,
 };
 
 function normalizedSearchText(value: string) {
@@ -341,106 +425,71 @@ async function resolveCompanyName(intent: Intent): Promise<Intent> {
   }
 }
 
-function explicitTickerFromText(text: string) {
-  return text.match(
-    /(?:^|\s|[$（(])([A-Z][A-Z0-9.^-]{0,17})(?=$|\s|[$）),，。！？!?]|[\u4e00-\u9fff])/u,
-  )?.[1];
-}
-
-function companyNameFromText(text: string) {
-  const latin = text
-    .match(
-      /(?:^|\s|[（(])([A-Za-z][A-Za-z0-9 .&'-]{1,79}?)(?=$|\s|[）),，。！？!?])/u,
-    )?.[1]
-    ?.trim();
-  if (latin && !/^[A-Z0-9.^-]{1,18}$/.test(latin)) return latin;
-  const trimmed = text.trim();
-  return trimmed.length <= 80 && !/[，。！？!?]/u.test(trimmed)
-    ? trimmed
-    : undefined;
-}
-
 async function extractIntent(
   text: string,
   prior: Intent,
   slug: SymbolAgentSlug,
 ): Promise<Intent> {
-  const explicitTicker = explicitTickerFromText(text)?.toUpperCase();
-  if (!config.deepseekApiKey) {
-    const merged = {
-      ...prior,
-      ...(explicitTicker ? { symbol: explicitTicker } : {}),
-      ...(!explicitTicker ? { companyName: companyNameFromText(text) } : {}),
-      question: text,
-    };
-    const resolved = await resolveCompanyName(merged);
-    return {
-      ...resolved,
-      missing: definitions[slug].needs.filter(
-        (key) => !resolved[key as keyof Intent],
-      ),
-      confidence: 0,
-    };
-  }
-  const prompt = `你是金融研究 Agent 的意图解析器。只返回 JSON，不要解释。symbol 只有在用户明确写出交易代码时填写；如果用户给的是公司名称，填写 companyName 原文，不要自行把公司名称映射为代码。\n用户消息：${text}\n已有上下文：${JSON.stringify(prior)}\n任务：${definitions[slug].description}\nJSON字段：symbol(用户明确写出的交易代码), companyName(用户明确提到的公司名称), assetType(stock|etf|index|crypto), market, period, question, thesis, missing(string数组，仅 symbol/period/thesis/question), confidence(0-1)。`;
-  try {
-    const response = await fetch("https://api.deepseek.com/chat/completions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${config.deepseekApiKey}`,
+  if (!config.deepseekApiKey)
+    throw new Error(
+      "AI 意图解析服务未配置（缺少 DEEPSEEK_API_KEY），无法开始 Symbol 对话。",
+    );
+  const prompt = [
+    "你是金融研究 Agent 的意图解析器。必须调用 extract_symbol_intent 工具，不要返回普通文本。",
+    "请结合用户最新消息和已有会话上下文提取信息。用户明确说出代码时填写 symbol；用户说出明确公司名时填写 companyName。若公司名对应全球唯一且你有高置信度代码，可同时填写 symbol（例如苹果对应 AAPL）；不确定时不要猜。",
+    "缺失字段由服务端根据结构化结果重新判断，仍请填写你对 missing 的判断。没有值的字符串字段必须返回空字符串。",
+    "用户最新消息：" + text,
+    "已有上下文：" + JSON.stringify(prior),
+    "任务：" + definitions[slug].description,
+  ].join("\n");
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer " + config.deepseekApiKey,
+    },
+    body: JSON.stringify({
+      model: config.deepseekModel,
+      temperature: 0,
+      max_tokens: 600,
+      tools: [intentExtractionTool],
+      tool_choice: {
+        type: "function",
+        function: { name: "extract_symbol_intent" },
       },
-      body: JSON.stringify({
-        model: config.deepseekModel,
-        temperature: 0,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: "你是严格的 JSON 信息抽取器。" },
-          { role: "user", content: prompt },
-        ],
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!response.ok) throw new Error(`DeepSeek HTTP ${response.status}`);
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const parsed = intentSchema.parse(
-      JSON.parse(payload.choices?.[0]?.message?.content ?? "{}"),
-    );
-    const merged: Intent = {
-      ...prior,
-      ...Object.fromEntries(
-        Object.entries(parsed).filter(
-          ([, value]) => value !== undefined && value !== "",
-        ),
+      messages: [
+        { role: "system", content: "你是严格的金融意图结构化提取器。" },
+        { role: "user", content: prompt },
+      ],
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error("DeepSeek HTTP " + response.status);
+  const payload = (await response.json()) as {
+    choices?: Array<{
+      message?: {
+        tool_calls?: Array<{
+          function?: { name?: string; arguments?: string };
+        }>;
+      };
+    }>;
+  };
+  const toolCall = payload.choices?.[0]?.message?.tool_calls?.find(
+    (call) => call.function?.name === "extract_symbol_intent",
+  );
+  if (!toolCall?.function?.arguments)
+    throw new Error("DeepSeek 未返回结构化意图工具调用。");
+  const parsed = intentSchema.parse(JSON.parse(toolCall.function.arguments));
+  const merged: Intent = {
+    ...prior,
+    ...Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([, value]) => value !== undefined && value !== "",
       ),
-    };
-    const resolved = await resolveCompanyName(merged);
-    resolved.missing = definitions[slug].needs.filter(
-      (key) => !resolved[key as keyof Intent],
-    );
-    return resolved;
-  } catch (error) {
-    console.warn(
-      "Symbol intent extraction failed:",
-      error instanceof Error ? error.message : error,
-    );
-    const fallback = {
-      ...prior,
-      ...(explicitTicker ? { symbol: explicitTicker } : {}),
-      ...(!explicitTicker ? { companyName: companyNameFromText(text) } : {}),
-      question: text,
-      confidence: 0,
-    };
-    const resolved = await resolveCompanyName(fallback);
-    return {
-      ...resolved,
-      missing: definitions[slug].needs.filter(
-        (key) => !resolved[key as keyof Intent],
-      ),
-    };
-  }
+    ),
+  };
+  merged.missing = missingIntentFields(slug, merged);
+  return merged;
 }
 
 type ResearchResponseInput = {
@@ -569,6 +618,84 @@ async function generateResearchResponse(
   };
   const text = payload.choices?.[0]?.message?.content?.trim();
   if (!text) throw new Error("DeepSeek 未返回可展示的回复。");
+  return text;
+}
+
+type ClarificationResponseInput = {
+  slug: SymbolAgentSlug;
+  userMessage: string;
+  transcript: SymbolTranscriptEntry[];
+  intent: Intent;
+  missing: string[];
+  companyResolutionFailed?: boolean;
+};
+
+async function generateClarificationResponse(
+  input: ClarificationResponseInput,
+  options: ResearchResponseOptions = {},
+): Promise<string> {
+  if (!config.deepseekApiKey)
+    throw new Error(
+      "AI 澄清服务未配置（缺少 DEEPSEEK_API_KEY），无法继续收集信息。",
+    );
+  const recentTranscript = input.transcript.slice(-8).map((entry) => ({
+    role: entry.role === "agent" ? "assistant" : "user",
+    content: entry.text.slice(0, 1_500),
+  }));
+  const resolutionHint = input.companyResolutionFailed
+    ? "用户已经提供了公司名，但行情源无法唯一匹配；请让用户补充股票代码或上市市场，不要再次要求公司名称。"
+    : "只询问当前缺失的信息，不要提前查询或编造行情。";
+  const system =
+    "你是" +
+    definitions[input.slug].name +
+    "的对话澄清助手。用中文自然、简短、友好地追问用户，最多两句话。不要机械复述固定模板，不要回答尚未完成的数据分析。" +
+    resolutionHint;
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer " + config.deepseekApiKey,
+    },
+    body: JSON.stringify({
+      model: config.deepseekModel,
+      temperature: 0.45,
+      max_tokens: 260,
+      ...(options.onDelta ? { stream: true } : {}),
+      messages: [
+        { role: "system", content: system },
+        ...recentTranscript,
+        {
+          role: "user",
+          content:
+            "用户最新消息：" +
+            input.userMessage +
+            "\n已识别信息：" +
+            compactModelContext(input.intent, 2_000) +
+            "\n仍缺少：" +
+            input.missing.join("、"),
+        },
+      ],
+    }),
+    signal: options.signal
+      ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)])
+      : AbortSignal.timeout(30_000),
+  });
+  if (!response.ok)
+    throw new Error("DeepSeek 澄清回复失败（HTTP " + response.status + "）。");
+  if (options.onDelta) {
+    let text = "";
+    for await (const delta of deepSeekTextDeltas(response)) {
+      text += delta;
+      await options.onDelta(delta);
+    }
+    if (!text.trim()) throw new Error("DeepSeek 未返回可展示的澄清问题。");
+    return text;
+  }
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const text = payload.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error("DeepSeek 未返回可展示的澄清问题。");
   return text;
 }
 
@@ -1119,17 +1246,31 @@ export async function handleSymbolMessage(
   const contextId =
     current?.context_id ?? incoming.contextId ?? crypto.randomUUID();
   await hooks.onStart?.({ taskId, contextId });
-  const intent = await extractIntent(
-    incoming.text,
-    current?.intent ?? {},
-    slug,
-  );
   const transcript: SymbolTranscriptEntry[] = [
     ...(current?.transcript ?? []),
     { role: "user", text: incoming.text, at: now() },
   ];
-  if ((intent.missing ?? []).length) {
-    const answer = missingQuestion(slug, intent.missing ?? []);
+  const requestInput = async (
+    nextIntent: Intent,
+    companyResolutionFailed = false,
+  ) => {
+    const missing = nextIntent.missing ?? [];
+    const answer = await generateClarificationResponse(
+      {
+        slug,
+        userMessage: incoming.text,
+        transcript,
+        intent: nextIntent,
+        missing,
+        companyResolutionFailed,
+      },
+      {
+        signal: hooks.signal,
+        onDelta: hooks.onDelta
+          ? (delta) => hooks.onDelta?.(delta, { taskId, contextId })
+          : undefined,
+      },
+    );
     transcript.push({ role: "agent", text: answer, at: now() });
     await saveConversation({
       task_id: taskId,
@@ -1138,7 +1279,7 @@ export async function handleSymbolMessage(
       agent_slug: slug,
       state: "collecting",
       user_message: incoming.text,
-      intent,
+      intent: nextIntent,
       transcript,
       result: null,
     });
@@ -1147,19 +1288,27 @@ export async function handleSymbolMessage(
         tenantId,
         taskId,
         agentSlug: slug,
-        intent: intent as Record<string, unknown>,
+        intent: nextIntent as Record<string, unknown>,
       },
-      intent.missing ?? [],
+      missing,
     );
     return taskJson({
       taskId,
       contextId,
       state: "TASK_STATE_INPUT_REQUIRED",
       text: answer,
-      metadata: { missing: intent.missing, agent: slug },
+      metadata: { missing, agent: slug, intent: nextIntent },
     });
-  }
+  };
+  let intent: Intent = current?.intent ?? {};
   try {
+    intent = await extractIntent(incoming.text, intent, slug);
+    if ((intent.missing ?? []).length) return await requestInput(intent);
+    intent = await resolveCompanyName(intent);
+    if (!intent.symbol) {
+      intent = { ...intent, missing: ["symbol"] };
+      return await requestInput(intent, true);
+    }
     const result = await runSymbolGraph(
       {
         tenantId,

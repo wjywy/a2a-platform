@@ -55,62 +55,129 @@ describe("bundled Symbol A2A agents", () => {
     ).toBe("分析 TSLA");
   });
 
-  it("resolves a company-name follow-up before deciding the symbol is missing", async () => {
+  it("extracts a natural-language target with a strict tool schema before Yahoo", async () => {
     const originalKey = config.deepseekApiKey;
     const originalModel = config.deepseekModel;
     config.deepseekApiKey = "test-key";
     config.deepseekModel = "test-model";
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  content: JSON.stringify({
-                    companyName: "apple",
-                    missing: ["symbol"],
-                    confidence: 0.99,
-                  }),
-                },
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                tool_calls: [
+                  {
+                    function: {
+                      name: "extract_symbol_intent",
+                      arguments: JSON.stringify({
+                        symbol: "",
+                        companyName: "苹果",
+                        assetType: "stock",
+                        market: "NASDAQ",
+                        period: "",
+                        question: "分析苹果",
+                        thesis: "",
+                        missing: ["symbol"],
+                        confidence: 0.99,
+                      }),
+                    },
+                  },
+                ],
               },
-            ],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            quotes: [
-              {
-                symbol: "AAPL",
-                shortname: "Apple Inc.",
-                longname: "Apple Inc.",
-              },
-            ],
-            news: [],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
-      );
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
     try {
       const intent = await __symbolServiceInternals.extractIntent(
-        "apple",
+        "帮我分析苹果",
         {},
         "symbol-market",
       );
       expect(intent).toMatchObject({
-        companyName: "apple",
-        symbol: "AAPL",
+        companyName: "苹果",
         missing: [],
       });
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
-        "q=apple&quotesCount=10",
+      expect(intent.symbol).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const request = fetchMock.mock.calls[0]?.[1] as { body: string };
+      const body = JSON.parse(request.body);
+      expect(body.tools[0].function.name).toBe("extract_symbol_intent");
+      expect(body.tools[0].function.strict).toBe(true);
+      expect(body.tools[0].function.parameters.additionalProperties).toBe(
+        false,
       );
+      expect(body.tool_choice.function.name).toBe("extract_symbol_intent");
+    } finally {
+      config.deepseekApiKey = originalKey;
+      config.deepseekModel = originalModel;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("resolves a company name only after extraction has supplied it", () => {
+    expect(
+      __symbolServiceInternals.providerSymbolForCompany("apple", {
+        quotes: [
+          { symbol: "AAPL", shortname: "Apple Inc.", longname: "Apple Inc." },
+        ],
+      }),
+    ).toBe("AAPL");
+  });
+
+  it("does not fall back to string parsing when the intent model is unavailable", async () => {
+    const originalKey = config.deepseekApiKey;
+    config.deepseekApiKey = "";
+    try {
+      await expect(
+        __symbolServiceInternals.extractIntent(
+          "帮我分析苹果",
+          {},
+          "symbol-market",
+        ),
+      ).rejects.toThrow("AI 意图解析服务未配置");
+    } finally {
+      config.deepseekApiKey = originalKey;
+    }
+  });
+
+  it("lets the model write a natural clarification when the target is missing", async () => {
+    const originalKey = config.deepseekApiKey;
+    const originalModel = config.deepseekModel;
+    config.deepseekApiKey = "test-key";
+    config.deepseekModel = "test-model";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: "你准备分析哪家公司？可以直接说公司名称或股票代码。",
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const answer =
+        await __symbolServiceInternals.generateClarificationResponse({
+          slug: "symbol-market",
+          userMessage: "1",
+          transcript: [
+            { role: "user", text: "1", at: "2026-09-04T00:00:00.000Z" },
+          ],
+          intent: { missing: ["symbol"] },
+          missing: ["symbol"],
+        });
+      expect(answer).toContain("哪家公司");
+      expect(answer).not.toContain("为了继续Symbol");
     } finally {
       config.deepseekApiKey = originalKey;
       config.deepseekModel = originalModel;
