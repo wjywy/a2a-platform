@@ -1227,9 +1227,62 @@ describe("API key storage and gateway authorization", () => {
 describe("Symbol conversation management", () => {
   it("persists, reads, renames, archives and restores an interrupted conversation", async () => {
     const tenant = await createTenant(`symbol-conversation-${unique}`);
-    const created = await handleSymbolMessage("symbol-market", tenant.id, {
-      message: { parts: [{ text: "我想研究一家科技公司" }] },
-    });
+    const previousDeepseekKey = config.deepseekApiKey;
+    config.deepseekApiKey = "integration-test-key";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  tool_calls: [
+                    {
+                      function: {
+                        name: "extract_symbol_intent",
+                        arguments: JSON.stringify({
+                          symbol: "",
+                          companyName: "",
+                          assetType: "stock",
+                          market: "",
+                          period: "",
+                          question: "",
+                          thesis: "",
+                          missing: ["symbol"],
+                          confidence: 0,
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: { content: "你想研究哪家公司或股票？" },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    let created: Awaited<ReturnType<typeof handleSymbolMessage>>;
+    try {
+      created = await handleSymbolMessage("symbol-market", tenant.id, {
+        message: { parts: [{ text: "我想研究一家科技公司" }] },
+      });
+    } finally {
+      config.deepseekApiKey = previousDeepseekKey;
+      fetchMock.mockRestore();
+    }
     const taskId = String(created.id);
     const list = await request(createApp())
       .get(
