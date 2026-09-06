@@ -59,7 +59,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          # Release payload selection compares the pushed commit against its
+          # actual predecessor. A shallow checkout can omit `event.before`
+          # (for example after a force push or runner cache miss), which must
+          # never block a production deployment.
+          fetch-depth: 0
 
       - name: Determine release payload
         id: release_payload
@@ -74,16 +78,24 @@ jobs:
           if [ "${{ github.event_name }}" != "push" ]; then
             echo "image_mode=all" >> "$GITHUB_OUTPUT"
           else
-            changed_files="$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- \
-              . ':(exclude).github/workflows/deploy.yml')"
-            if [ -z "$changed_files" ]; then
-              echo "image_mode=none" >> "$GITHUB_OUTPUT"
-            elif ! printf '%s\n' "$changed_files" | grep -Eqv '^apps/platform-api/src/' >/dev/null; then
-              echo "image_mode=api-overlay" >> "$GITHUB_OUTPUT"
-            elif ! printf '%s\n' "$changed_files" | grep -Eqv '^apps/admin-console/src/' >/dev/null; then
-              echo "image_mode=console-overlay" >> "$GITHUB_OUTPUT"
-            else
+            before="${{ github.event.before }}"
+            after="${{ github.sha }}"
+            if ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              # A full image release is the conservative fallback when GitHub
+              # did not provide a locally comparable base revision.
               echo "image_mode=all" >> "$GITHUB_OUTPUT"
+            else
+              changed_files="$(git diff --name-only "$before" "$after" -- \
+                . ':(exclude).github/workflows/deploy.yml')"
+              if [ -z "$changed_files" ]; then
+                echo "image_mode=none" >> "$GITHUB_OUTPUT"
+              elif ! printf '%s\n' "$changed_files" | grep -Eqv '^apps/platform-api/src/' >/dev/null; then
+                echo "image_mode=api-overlay" >> "$GITHUB_OUTPUT"
+              elif ! printf '%s\n' "$changed_files" | grep -Eqv '^apps/admin-console/src/' >/dev/null; then
+                echo "image_mode=console-overlay" >> "$GITHUB_OUTPUT"
+              else
+                echo "image_mode=all" >> "$GITHUB_OUTPUT"
+              fi
             fi
           fi
 
