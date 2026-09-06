@@ -207,7 +207,12 @@ export function useAgentStudio() {
       if (next) setTaskId(next);
     },
     onStatus: (status) => {
-      setStreamPhase(status === "completed" ? "idle" : status);
+      // A terminal protocol error has already been surfaced through chat.error;
+      // it must also release the visual stream state so the Stop action cannot
+      // remain available after the ReadableStream has closed.
+      setStreamPhase(
+        status === "completed" || status === "error" ? "idle" : status,
+      );
     },
   };
 

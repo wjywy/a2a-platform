@@ -1,8 +1,12 @@
+import { LongbridgeProvider } from "../apps/platform-api/src/longbridge-provider.js";
+import { analyzeGamma } from "../apps/platform-api/src/option-gamma-service.js";
+import { verifySymbolRouting } from "./verify-symbol-routing.js";
+
 const consoleOrigin = process.env.CONSOLE_ORIGIN ?? "http://localhost:5173";
 const gatewayOrigin = process.env.GATEWAY_ORIGIN ?? "http://localhost:8080";
 const adminToken = process.env.PLATFORM_DEV_TOKEN ?? "dev-admin-token";
 
-type Check = { name: string; ok: boolean; detail: string };
+type Check = { name: string; ok: boolean; skipped?: boolean; detail: string };
 const checks: Check[] = [];
 
 async function check(name: string, operation: () => Promise<string>) {
@@ -78,20 +82,112 @@ await check("Preserved stock-expert Agent", async () => {
   return `${agent.slug} status=${agent.status}`;
 });
 
+const symbolAgentSlugs = [
+  "symbol-market",
+  "symbol-company",
+  "symbol-technical-options",
+  "symbol-news",
+  "symbol-risk",
+  "symbol-critic",
+  "symbol-supervisor",
+];
+
+await check("Built-in Symbol Agents", async () => {
+  const body = await json("/api/admin/agents?search=symbol-", true);
+  const agents = body.agents as Array<{ slug: string; status: string }>;
+  const found = new Map(agents.map((agent) => [agent.slug, agent]));
+  const missing = symbolAgentSlugs.filter((slug) => !found.has(slug));
+  if (missing.length) throw new Error(`missing=${missing.join(",")}`);
+  return symbolAgentSlugs
+    .map((slug) => `${slug}:${found.get(slug)?.status ?? "unknown"}`)
+    .join(" ");
+});
+
+await check("Built-in Symbol Cards", async () => {
+  for (const slug of symbolAgentSlugs) {
+    const body = await json(`/api/builtin/symbol/${slug}/.well-known/agent-card.json`);
+    const interfaces = body.supportedInterfaces as Array<{ url?: string }>;
+    if (!Array.isArray(interfaces) || !interfaces.some((item) => item.url?.endsWith(`/api/builtin/symbol/${slug}`)))
+      throw new Error(`${slug} card interface is invalid`);
+  }
+  return `${symbolAgentSlugs.length} cards discoverable`;
+});
+
+await check("Longbridge configuration status", async () => {
+  const tenants = await json("/api/admin/tenants?page=1&pageSize=100", true);
+  const items = tenants.items as Array<{ id: string; slug: string }>;
+  const tenant = items.find((item) => item.slug === "default");
+  if (!tenant) throw new Error("default tenant is missing");
+  const body = await json(
+    `/api/admin/tenants/${tenant.id}/market-data/longbridge`,
+    true,
+  );
+  const summary = body.summary as {
+    configured?: boolean;
+    source?: string;
+    status?: string;
+  };
+  return `configured=${Boolean(summary.configured)} source=${summary.source ?? "none"} status=${summary.status ?? "unknown"}`;
+});
+
+const longbridgeConfigured = Boolean(
+  process.env.LONGBRIDGE_APP_KEY &&
+    process.env.LONGBRIDGE_APP_SECRET &&
+    process.env.LONGBRIDGE_ACCESS_TOKEN,
+);
+if (!longbridgeConfigured) {
+  checks.push({
+    name: "Longbridge AAPL smoke",
+    ok: false,
+    skipped: true,
+    detail: "未配置服务端 Longbridge API-key，smoke 未执行。",
+  });
+} else {
+  await check("Longbridge AAPL smoke", async () => {
+    const provider = new LongbridgeProvider();
+    const context = {
+      tenantId: process.env.LONGBRIDGE_SMOKE_TENANT_ID ?? "smoke",
+      agentSlug: "symbol-market",
+      requestId: `verify-${Date.now()}`,
+    };
+    const quote = await provider.getQuote("AAPL", context);
+    if (quote.meta.status !== "available" || quote.price === undefined)
+      return `DEGRADED quote=${quote.meta.status} permission=${quote.meta.permission} freshness=${quote.meta.freshness}`;
+    const chain = await provider.getOptionChain("AAPL", {
+      ...context,
+      spot: quote.price,
+      asOf: quote.meta.asOf,
+    });
+    const optionQuotes = await provider.getOptionQuotes(
+      chain.contracts.map((contract) => contract.symbol),
+      { ...context, spot: quote.price, asOf: quote.meta.asOf },
+    );
+    const gamma = analyzeGamma({
+      spot: quote.price,
+      quotes: optionQuotes.quotes,
+      asOf: optionQuotes.meta.asOf ?? quote.meta.asOf ?? new Date().toISOString(),
+    });
+    return `quote=${quote.meta.status}/${quote.meta.freshness} option=${optionQuotes.meta.status}/${optionQuotes.meta.permission} contracts=${optionQuotes.quotes.length} gammaContracts=${gamma.perContract.length}`;
+  });
+}
+
+if (process.env.SYMBOL_ROUTING_SMOKE === "true") checks.push(...await verifySymbolRouting());
+
 for (const item of checks) {
   console.log(
-    `${item.ok ? "PASS" : "FAIL"}  ${item.name.padEnd(28)} ${item.detail}`,
+    `${item.skipped ? "SKIP" : item.ok ? "PASS" : "FAIL"}  ${item.name.padEnd(28)} ${item.detail}`,
   );
 }
 
-const failures = checks.filter((item) => !item.ok);
+const failures = checks.filter((item) => !item.ok && !item.skipped);
 if (failures.length) {
   console.error(
     `Platform verification failed: ${failures.length}/${checks.length} checks failed.`,
   );
   process.exitCode = 1;
 } else {
+  const skipped = checks.filter((item) => item.skipped).length;
   console.log(
-    `Platform verification passed: ${checks.length}/${checks.length} checks.`,
+    `Platform verification passed: ${checks.length - skipped}/${checks.length - skipped} checks${skipped ? `; ${skipped} skipped.` : "."}`,
   );
 }

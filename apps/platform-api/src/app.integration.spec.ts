@@ -20,7 +20,12 @@ import {
   getTaskDetail,
   markTaskCancelled,
 } from "./task-service.js";
-import { handleSymbolMessage, symbolAgentSlugs } from "./symbol-service.js";
+import {
+  getSymbolTask,
+  handleSymbolMessage,
+  symbolAgentSlugs,
+} from "./symbol-service.js";
+import { writeMemory } from "./memory-service.js";
 import {
   conversationToJson,
   conversationToMarkdown,
@@ -47,6 +52,8 @@ import {
   legacyMarketAgentSlug,
 } from "./symbol-bootstrap.js";
 import { decryptCredential } from "./credential-service.js";
+import type { MarketDataProvider } from "./market-data-provider.js";
+import { buildSymbolModelContext } from "./symbol-context.js";
 
 const admin = "Bearer dev-admin-token";
 const unique = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -1242,6 +1249,10 @@ describe("Symbol conversation management", () => {
                       function: {
                         name: "extract_symbol_intent",
                         arguments: JSON.stringify({
+                          intentType: "research_request",
+                          taskRelation: "new",
+                          controlAction: "",
+                          uncertaintyReasons: [],
                           symbol: "",
                           companyName: "",
                           assetType: "stock",
@@ -1250,7 +1261,7 @@ describe("Symbol conversation management", () => {
                           question: "",
                           thesis: "",
                           missing: ["symbol"],
-                          confidence: 0,
+                          confidence: 0.99,
                         }),
                       },
                     },
@@ -1337,6 +1348,833 @@ describe("Symbol conversation management", () => {
       .send({ archived: false });
     expect(restored.status).toBe(200);
     expect(restored.body.conversation.archivedAt).toBeUndefined();
+  });
+});
+
+describe("Symbol memory and migration acceptance", () => {
+  it("keeps migration order, old sessions and default policies compatible", async () => {
+    const migrations = await query<{ id: string }>(
+      "SELECT id FROM schema_migrations ORDER BY id",
+    );
+    const migrationIds = migrations.map((row) => row.id);
+    expect(migrationIds).toContain("026_agent_memory_symbol_market.sql");
+    expect(migrationIds.indexOf("026_agent_memory_symbol_market.sql")).toBe(
+      migrationIds.indexOf("025_studio_service_credentials.sql") + 1,
+    );
+
+    const columns = await query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='symbol_conversations'
+         AND column_name = ANY($1::text[])`,
+      [["memory_summary", "memory_entry_ids", "evidence", "stream_state"]],
+    );
+    expect(columns.map((row) => row.column_name).sort()).toEqual([
+      "evidence",
+      "memory_entry_ids",
+      "memory_summary",
+      "stream_state",
+    ]);
+
+    const policies = await query<{ slug: string }>(
+      `SELECT a.slug FROM agent_policies p
+       JOIN agents a ON a.id=p.agent_id
+       WHERE a.slug = ANY($1::text[]) AND a.deleted_at IS NULL`,
+      [symbolAgentSlugs],
+    );
+    expect(policies.map((row) => row.slug).sort()).toEqual(
+      [...symbolAgentSlugs].sort(),
+    );
+
+    const foreignKeys = await query<{ table_name: string; column_name: string; foreign_table_name: string }>(
+      `SELECT c.table_name,kcu.column_name,ccu.table_name AS foreign_table_name
+       FROM information_schema.table_constraints c
+       JOIN information_schema.key_column_usage kcu
+         ON c.constraint_name=kcu.constraint_name AND c.table_schema=kcu.table_schema
+       JOIN information_schema.constraint_column_usage ccu
+         ON ccu.constraint_name=c.constraint_name AND ccu.table_schema=c.table_schema
+       WHERE c.constraint_type='FOREIGN KEY'
+         AND c.table_name IN ('agent_memories','market_data_credentials')
+         AND kcu.column_name='tenant_id'`,
+    );
+    expect(foreignKeys).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          table_name: "agent_memories",
+          column_name: "tenant_id",
+          foreign_table_name: "tenants",
+        }),
+        expect.objectContaining({
+          table_name: "market_data_credentials",
+          column_name: "tenant_id",
+          foreign_table_name: "tenants",
+        }),
+      ]),
+    );
+
+    const tenant = await createTenant(`symbol-legacy-${unique}`);
+    const taskId = crypto.randomUUID();
+    const contextId = crypto.randomUUID();
+    await query(
+      `INSERT INTO symbol_conversations(
+         task_id,context_id,tenant_id,agent_slug,state,user_message,title
+       ) VALUES($1,$2,$3,'symbol-market','collecting','旧会话','旧会话')`,
+      [taskId, contextId, tenant.id],
+    );
+    const restored = await getSymbolTask("symbol-market", tenant.id, taskId);
+    expect(restored).toMatchObject({
+      id: taskId,
+      contextId,
+      status: { state: "TASK_STATE_INPUT_REQUIRED" },
+    });
+  });
+
+  it("exposes policy and memory controls while preserving tenant isolation", async () => {
+    const tenant = await createTenant(`symbol-memory-${unique}`);
+    const otherTenant = await createTenant(`symbol-memory-other-${unique}`);
+    const conversationId = crypto.randomUUID();
+    const memory = await writeMemory(
+      {
+        tenantId: tenant.id,
+        agentSlug: "symbol-market",
+        conversationId,
+      },
+      {
+        scope: "conversation",
+        category: "fact",
+        content: { recognizedEntity: "苹果", note: "用户明确提到苹果" },
+        sourceConversationId: conversationId,
+        sourceKind: "integration-test",
+        confidence: 0.9,
+      },
+    );
+
+    const policy = await request(createApp())
+      .get(
+        `/api/admin/agents/symbol-market/memory-policy?tenantId=${tenant.id}`,
+      )
+      .set("Authorization", admin);
+    expect(policy.status).toBe(200);
+    expect(policy.body.policy).toMatchObject({
+      enabled: true,
+      readScopes: ["conversation"],
+      writeScopes: ["conversation"],
+    });
+
+    const visible = await request(createApp())
+      .get(
+        `/api/memory?agentSlug=symbol-market&tenantId=${tenant.id}&conversationId=${conversationId}`,
+      )
+      .set("Authorization", admin);
+    expect(visible.status).toBe(200);
+    expect(visible.body.entries).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: memory.id })]),
+    );
+
+    const crossTenant = await request(createApp())
+      .get(
+        `/api/memory?agentSlug=symbol-market&tenantId=${otherTenant.id}&conversationId=${conversationId}`,
+      )
+      .set("Authorization", admin);
+    expect(crossTenant.status).toBe(200);
+    expect(crossTenant.body.entries).toEqual([]);
+
+    const deleted = await request(createApp())
+      .delete(
+        `/api/memory/${memory.id}?agentSlug=symbol-market&tenantId=${tenant.id}&conversationId=${conversationId}`,
+      )
+      .set("Authorization", admin);
+    expect(deleted.status).toBe(204);
+
+    const afterDelete = await request(createApp())
+      .get(
+        `/api/memory?agentSlug=symbol-market&tenantId=${tenant.id}&conversationId=${conversationId}`,
+      )
+      .set("Authorization", admin);
+    expect(afterDelete.status).toBe(200);
+    expect(afterDelete.body.entries).toEqual([]);
+  });
+
+  it("applies policy changes, reset boundaries and a twenty-turn memory fixture", async () => {
+    const tenant = await createTenant(`symbol-memory-fixture-${unique}`);
+    const conversationId = crypto.randomUUID();
+    const policyPath =
+      `/api/admin/agents/symbol-market/memory-policy?tenantId=${tenant.id}`;
+    const before = await request(createApp()).get(policyPath).set("Authorization", admin);
+    expect(before.status).toBe(200);
+    const originalVersion = before.body.policy.version as number;
+
+    const disabled = await request(createApp())
+      .patch(policyPath)
+      .set("Authorization", admin)
+      .send({ tenantId: tenant.id, memoryEnabled: false, expectedVersion: originalVersion });
+    expect(disabled.status).toBe(200);
+    expect(disabled.body.policy.enabled).toBe(false);
+
+    const reenabled = await request(createApp())
+      .patch(policyPath)
+      .set("Authorization", admin)
+      .send({ tenantId: tenant.id, memoryEnabled: true, expectedVersion: disabled.body.policy.version });
+    expect(reenabled.status).toBe(200);
+    expect(reenabled.body.policy.enabled).toBe(true);
+
+    for (let index = 0; index < 20; index++) {
+      await writeMemory(
+        {
+          tenantId: tenant.id,
+          agentSlug: "symbol-market",
+          conversationId,
+        },
+        {
+          scope: "conversation",
+          category: index % 2 ? "correction" : "summary",
+          content: {
+            turn: index + 1,
+            question: `第 ${index + 1} 轮追问与纠正`,
+            recognizedEntity: "AAPL",
+          },
+          sourceConversationId: conversationId,
+          sourceKind: "twenty-turn-fixture",
+          confidence: 0.5 + index / 100,
+        },
+      );
+    }
+    const memories = await request(createApp())
+      .get(`/api/memory?agentSlug=symbol-market&tenantId=${tenant.id}&conversationId=${conversationId}`)
+      .set("Authorization", admin);
+    expect(memories.status).toBe(200);
+    expect(memories.body.entries).toHaveLength(20);
+    expect(JSON.stringify(memories.body.entries).length).toBeLessThan(12_000);
+
+    const userReset = await request(createApp())
+      .post("/api/memory/reset")
+      .set("Authorization", admin)
+      .send({ agentSlug: "symbol-market", tenantId: tenant.id, scope: "agent" });
+    expect(userReset.status).toBe(403);
+    expect(userReset.body.error.code).toBe("MEMORY_SCOPE_DENIED");
+
+    const missingConversation = await request(createApp())
+      .post(`/api/admin/agents/symbol-market/memory/reset`)
+      .set("Authorization", admin)
+      .send({ tenantId: tenant.id, scope: "conversation" });
+    expect(missingConversation.status).toBe(400);
+    expect(missingConversation.body.error.code).toBe("MEMORY_SUBJECT_REQUIRED");
+
+    const reset = await request(createApp())
+      .post(`/api/admin/agents/symbol-market/memory/reset`)
+      .set("Authorization", admin)
+      .send({ tenantId: tenant.id, scope: "conversation", conversationId });
+    expect(reset.status).toBe(200);
+    expect(reset.body.deletedCount).toBe(20);
+    const afterReset = await request(createApp())
+      .get(`/api/memory?agentSlug=symbol-market&tenantId=${tenant.id}&conversationId=${conversationId}`)
+      .set("Authorization", admin);
+    expect(afterReset.body.entries).toEqual([]);
+  });
+
+  it("keeps context rules distinct across five built-in Agents", () => {
+    const prompts = symbolAgentSlugs.slice(0, 5).map((slug) =>
+      buildSymbolModelContext({
+        slug,
+        userMessage: "分析 AAPL 的当前问题",
+        intent: { symbol: "AAPL", question: "当前问题" },
+        evidence: { source: "controlled-fixture" },
+      }),
+    );
+    expect(new Set(prompts.map((item) => item.systemPrompt)).size).toBe(5);
+    expect(prompts.every((item) => !item.userPrompt.includes("为了继续Symbol"))).toBe(true);
+    expect(prompts.every((item) => item.systemPrompt.includes("固定句子"))).toBe(true);
+  });
+});
+
+describe("Symbol evidence and model failure acceptance", () => {
+  function intentResponse(input: {
+    symbol: string;
+    question?: string;
+    companyName?: string;
+    missing?: string[];
+  }) {
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  function: {
+                    name: "extract_symbol_intent",
+                    arguments: JSON.stringify({
+                      symbol: input.symbol,
+                      intentType: "research_request",
+                      taskRelation: "new",
+                      controlAction: "",
+                      uncertaintyReasons: [],
+                      companyName: input.companyName ?? "",
+                      assetType: "stock",
+                      market: "NASDAQ",
+                      period: "1m",
+                      question: input.question ?? "分析近期走势",
+                      thesis: "",
+                      missing: input.missing ?? [],
+                      confidence: 0.99,
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+
+  function availableQuote() {
+    return {
+      meta: {
+        provider: "longbridge" as const,
+        status: "available" as const,
+        permission: "available" as const,
+        asOf: "2026-09-05T00:00:00.000Z",
+        fetchedAt: "2026-09-05T00:00:01.000Z",
+        freshness: "live" as const,
+      },
+      symbol: "AAPL",
+      providerSymbol: "AAPL.US",
+      price: 200,
+      previousClose: 198,
+      change: 0.010101,
+      session: "regular" as const,
+    };
+  }
+
+  function unavailableOptions() {
+    const meta = {
+      provider: "longbridge" as const,
+      status: "unavailable" as const,
+      permission: "missing" as const,
+      asOf: "2026-09-05T00:05:00.000Z",
+      fetchedAt: "2026-09-05T00:00:01.000Z",
+      freshness: "unknown" as const,
+      degradedReason: "期权权限或 OPRA 数据不可用。",
+    };
+    return {
+      chain: {
+        meta,
+        underlying: "AAPL.US",
+        expiries: [],
+        contracts: [],
+      },
+      quotes: {
+        meta,
+        underlying: "AAPL.US",
+        quotes: [],
+      },
+    };
+  }
+
+  function mockProvider() {
+    const options = unavailableOptions();
+    const provider = {
+      getQuote: vi.fn().mockResolvedValue(availableQuote()),
+      getOptionChain: vi.fn().mockResolvedValue(options.chain),
+      getOptionQuotes: vi.fn().mockResolvedValue(options.quotes),
+    } as MarketDataProvider;
+    return { provider, options };
+  }
+
+  it("completes with live quote evidence while marking unavailable options as degraded", async () => {
+    const tenant = await createTenant(`symbol-degraded-options-${unique}`);
+    const previousKey = config.deepseekApiKey;
+    config.deepseekApiKey = "integration-test-key";
+    const { provider, options } = mockProvider();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_input, init) => {
+        const request = JSON.parse(String(init?.body ?? "{}")) as {
+          tools?: unknown;
+        };
+        if (request.tools) return intentResponse({ symbol: "AAPL", question: "分析期权 Gamma 和后续走势" });
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "这是模型基于实时行情与期权权限状态生成的研究说明。" } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    );
+    try {
+      const result = await handleSymbolMessage(
+        "symbol-market",
+        tenant.id,
+        { message: { parts: [{ text: "帮我分析 AAPL 期权 Gamma 和后续走势" }] } },
+        { marketDataProvider: provider },
+      );
+      expect(result.status.state).toBe("TASK_STATE_COMPLETED");
+      expect(result.status.message?.metadata).toMatchObject({
+        messageSource: "agent-authored",
+      });
+      expect(result.status.message?.parts[0]).toMatchObject({
+        text: "这是模型基于实时行情与期权权限状态生成的研究说明。",
+      });
+      expect(result.artifacts[0]?.parts[0]).toMatchObject({
+        data: expect.objectContaining({
+          market: expect.objectContaining({
+            realtime: expect.objectContaining({
+              meta: expect.objectContaining({ status: "available", freshness: "live" }),
+            }),
+          }),
+          options: expect.objectContaining({
+            chain: expect.objectContaining({
+              meta: expect.objectContaining({ status: "unavailable", permission: "missing" }),
+            }),
+            optionQuotes: expect.objectContaining({
+              meta: expect.objectContaining({ status: "unavailable", permission: "missing" }),
+            }),
+            gamma: expect.objectContaining({
+              formula: expect.stringContaining("contractMultiplier"),
+            }),
+            timeDeltaMs: 300_000,
+          }),
+        }),
+      });
+      expect(provider.getQuote).toHaveBeenCalledTimes(1);
+      expect(provider.getOptionChain).toHaveBeenCalledTimes(1);
+      expect(provider.getOptionQuotes).toHaveBeenCalledWith([], expect.any(Object));
+      expect(options.quotes.quotes).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      config.deepseekApiKey = previousKey;
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("keeps model output specific to the latest question and tenant context", async () => {
+    const firstTenant = await createTenant(`symbol-context-first-${unique}`);
+    const secondTenant = await createTenant(`symbol-context-second-${unique}`);
+    const previousKey = config.deepseekApiKey;
+    config.deepseekApiKey = "integration-test-key";
+    const { provider } = mockProvider();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_input, init) => {
+        const request = JSON.parse(String(init?.body ?? "{}")) as {
+          tools?: unknown;
+          messages?: Array<{ content?: unknown }>;
+        };
+        if (request.tools) {
+          const userMessage = String(request.messages?.at(-1)?.content ?? "");
+          return intentResponse({
+            symbol: "AAPL",
+            question: userMessage.includes("风险") ? "分析风险" : "分析成交量",
+          });
+        }
+        const prompt = String(request.messages?.at(-1)?.content ?? "");
+        const text = prompt.includes("风险")
+          ? "这是第一租户针对风险问题生成的 Agent 回答。"
+          : "这是第二租户针对成交量问题生成的 Agent 回答。";
+        return new Response(JSON.stringify({ choices: [{ message: { content: text } }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    );
+    try {
+      const first = await handleSymbolMessage(
+        "symbol-market",
+        firstTenant.id,
+        { message: { parts: [{ text: "分析 AAPL 的风险" }] } },
+        { marketDataProvider: provider },
+      );
+      const second = await handleSymbolMessage(
+        "symbol-market",
+        secondTenant.id,
+        { message: { parts: [{ text: "分析 AAPL 的成交量" }] } },
+        { marketDataProvider: provider },
+      );
+      expect(first.status.state).toBe("TASK_STATE_COMPLETED");
+      expect(second.status.state).toBe("TASK_STATE_COMPLETED");
+      expect(first.status.message?.parts[0]).toMatchObject({
+        text: "这是第一租户针对风险问题生成的 Agent 回答。",
+      });
+      expect(second.status.message?.parts[0]).toMatchObject({
+        text: "这是第二租户针对成交量问题生成的 Agent 回答。",
+      });
+      expect(first.id).not.toBe(second.id);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      config.deepseekApiKey = previousKey;
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("fails truthfully when both Longbridge and fallback have no market price", async () => {
+    const tenant = await createTenant(`symbol-no-market-${unique}`);
+    const previousKey = config.deepseekApiKey;
+    config.deepseekApiKey = "integration-test-key";
+    const provider = {
+      getQuote: vi.fn().mockResolvedValue({
+        meta: {
+          provider: "longbridge" as const,
+          status: "unavailable" as const,
+          permission: "missing" as const,
+          fetchedAt: "2026-09-05T00:00:01.000Z",
+          freshness: "unknown" as const,
+          degradedReason: "Longbridge 凭据缺失。",
+        },
+        symbol: "AAPL",
+        providerSymbol: "AAPL.US",
+      }),
+      getOptionChain: vi.fn(),
+      getOptionQuotes: vi.fn(),
+    } as MarketDataProvider;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_input, init) => {
+        const request = JSON.parse(String(init?.body ?? "{}")) as { tools?: unknown };
+        if (request.tools) return intentResponse({ symbol: "AAPL" });
+        throw new Error("fallback unavailable");
+      },
+    );
+    try {
+      const result = await handleSymbolMessage(
+        "symbol-market",
+        tenant.id,
+        { message: { parts: [{ text: "分析 AAPL" }] } },
+        { marketDataProvider: provider },
+      );
+      expect(result.status.state).toBe("TASK_STATE_FAILED");
+      expect(result.artifacts).toEqual([]);
+      expect(provider.getQuote).toHaveBeenCalledTimes(1);
+      expect(provider.getOptionChain).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const bodyRequests = fetchMock.mock.calls.filter(([, init]) => Boolean(init?.body));
+      expect(bodyRequests).toHaveLength(1);
+      expect(JSON.parse(String(bodyRequests[0]?.[1]?.body ?? "{}")).tools).toBeTruthy();
+    } finally {
+      config.deepseekApiKey = previousKey;
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("persists failed state when the final model reply fails and never returns completed", async () => {
+    const tenant = await createTenant(`symbol-model-failure-${unique}`);
+    const previousKey = config.deepseekApiKey;
+    config.deepseekApiKey = "integration-test-key";
+    const { provider } = mockProvider();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_input, init) => {
+        const request = JSON.parse(String(init?.body ?? "{}")) as {
+          tools?: unknown;
+        };
+        if (request.tools) return intentResponse({ symbol: "AAPL" });
+        return new Response("model unavailable", {
+          status: 503,
+          headers: { "content-type": "text/plain" },
+        });
+      },
+    );
+    try {
+      const result = await handleSymbolMessage(
+        "symbol-market",
+        tenant.id,
+        { message: { parts: [{ text: "分析 AAPL" }] } },
+        { marketDataProvider: provider },
+      );
+      expect(result.status.state).toBe("TASK_STATE_FAILED");
+      expect(result.status.message?.metadata).toMatchObject({
+        messageSource: "protocol",
+      });
+      expect(result.artifacts).toEqual([]);
+      const restored = await getSymbolTask(
+        "symbol-market",
+        tenant.id,
+        String(result.id),
+      );
+      expect(restored?.status.state).toBe("TASK_STATE_FAILED");
+      expect(restored?.artifacts).toEqual([]);
+    } finally {
+      config.deepseekApiKey = previousKey;
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("reuses the same task/context and prior memory on a follow-up correction", async () => {
+    const tenant = await createTenant(`symbol-follow-up-${unique}`);
+    const previousKey = config.deepseekApiKey;
+    config.deepseekApiKey = "integration-test-key";
+    const { provider } = mockProvider();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async () =>
+        intentResponse({ symbol: "", missing: ["symbol"] }),
+      )
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "请补充苹果对应的股票代码或上市市场。" } }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockImplementationOnce(async () =>
+        intentResponse({ symbol: "AAPL", question: "改成 AAPL 后继续分析" }),
+      )
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "已根据你补充的 AAPL 继续分析。" } }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    try {
+      const first = await handleSymbolMessage(
+        "symbol-market",
+        tenant.id,
+        { message: { parts: [{ text: "帮我分析苹果" }] } },
+        { marketDataProvider: provider },
+      );
+      expect(first.status.state).toBe("TASK_STATE_INPUT_REQUIRED");
+      expect(provider.getQuote).not.toHaveBeenCalled();
+      const second = await handleSymbolMessage(
+        "symbol-market",
+        tenant.id,
+        {
+          message: {
+            taskId: String(first.id),
+            contextId: String(first.contextId),
+            parts: [{ text: "代码是 AAPL，继续分析" }],
+          },
+        },
+        { marketDataProvider: provider },
+      );
+      expect(second.id).toBe(first.id);
+      expect(second.contextId).toBe(first.contextId);
+      expect(second.status.state).toBe("TASK_STATE_COMPLETED");
+      const restored = await getSymbolTask("symbol-market", tenant.id, String(first.id));
+      expect(restored?.contextId).toBe(first.contextId);
+      expect(restored?.metadata).toMatchObject({
+        memory: { enabled: true },
+      });
+      const restoredMetadata = restored?.metadata as {
+        memory?: { usedEntryIds?: string[] };
+        evidence?: { market?: unknown };
+        stream?: { status?: string; textLength?: number };
+      };
+      expect(restoredMetadata.memory?.usedEntryIds?.length).toBeGreaterThan(0);
+      expect(restoredMetadata.evidence?.market).toBeDefined();
+      expect(restoredMetadata.stream).toMatchObject({
+        status: "completed",
+        textLength: "已根据你补充的 AAPL 继续分析。".length,
+      });
+      expect(provider.getQuote).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      config.deepseekApiKey = previousKey;
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("persists a disconnected cancellation and resumes the same task/context", async () => {
+    const tenant = await createTenant(`symbol-disconnect-${unique}`);
+    const previousKey = config.deepseekApiKey;
+    config.deepseekApiKey = "integration-test-key";
+    const { provider } = mockProvider();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (_input, init) => {
+        if (init?.signal?.aborted) throw new Error("请求已取消");
+        const request = JSON.parse(String(init?.body ?? "{}")) as { tools?: unknown };
+        if (request.tools) return intentResponse({ symbol: "AAPL", question: "断线后继续分析" });
+        return new Response(
+          JSON.stringify({ choices: [{ message: { content: "已恢复原任务并继续生成。" } }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    );
+    try {
+      const controller = new AbortController();
+      const first = await handleSymbolMessage(
+        "symbol-market",
+        tenant.id,
+        { message: { parts: [{ text: "分析 AAPL" }] } },
+        {
+          signal: controller.signal,
+          onStart: () => controller.abort(),
+          marketDataProvider: provider,
+        },
+      );
+      expect(first.status.state).toBe("TASK_STATE_CANCELED");
+      const cancelled = await getSymbolTask("symbol-market", tenant.id, String(first.id));
+      expect(cancelled?.status.state).toBe("TASK_STATE_CANCELED");
+
+      const resumed = await handleSymbolMessage(
+        "symbol-market",
+        tenant.id,
+        {
+          message: {
+            taskId: String(first.id),
+            contextId: String(first.contextId),
+            parts: [{ text: "请继续" }],
+          },
+        },
+        { marketDataProvider: provider },
+      );
+      expect(resumed.id).toBe(first.id);
+      expect(resumed.contextId).toBe(first.contextId);
+      expect(resumed.status.state).toBe("TASK_STATE_COMPLETED");
+      expect(resumed.status.message?.parts[0]).toMatchObject({
+        text: "已恢复原任务并继续生成。",
+      });
+      expect(provider.getQuote).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      config.deepseekApiKey = previousKey;
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("continues a disconnected SSE run and replays it through task subscribe", async () => {
+    const tenant = await createTenant(`symbol-reconnect-${unique}`);
+    const previousKey = config.deepseekApiKey;
+    const previousLongbridge = config.longbridgeEnabled;
+    const previousInternalToken = config.symbolInternalToken;
+    config.deepseekApiKey = "integration-test-key";
+    config.longbridgeEnabled = false;
+    config.symbolInternalToken = "integration-symbol-token";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (input, init) => {
+        const url = String(input);
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          tools?: unknown;
+          stream?: boolean;
+        };
+        if (body.tools) {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return intentResponse({ symbol: "AAPL", question: "断线后继续分析" });
+        }
+        if (url.includes("query1.finance.yahoo.com/v8/finance/chart")) {
+          return new Response(
+            JSON.stringify({
+              chart: {
+                result: [
+                  {
+                    timestamp: [1725494400, 1725580800],
+                    indicators: {
+                      quote: [{ close: [198, 200], volume: [100, 120] }],
+                    },
+                  },
+                ],
+                error: null,
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.includes("query1.finance.yahoo.com/v1/finance/search")) {
+          return new Response(
+            JSON.stringify({
+              quotes: [{ symbol: "AAPL", shortname: "Apple Inc.", exchange: "NMS" }],
+              news: [],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (body.stream) {
+          return new Response(
+            [
+              'data: {"choices":[{"delta":{"content":"断线后重连仍保持"}}]}',
+              'data: {"choices":[{"delta":{"content":"同一份研究结果。"}}]}',
+              "data: [DONE]",
+              "",
+            ].join("\n\n"),
+            { status: 200, headers: { "content-type": "text/event-stream" } },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "断线后重连仍保持同一份研究结果。" } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    );
+    const server = http.createServer(createApp());
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("reconnect server did not bind");
+    const port = address.port;
+    let firstChunk = "";
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let client: http.ClientRequest;
+        let settled = false;
+        const finish = (error?: Error) => {
+          if (settled) return;
+          settled = true;
+          if (error) reject(error);
+          else resolve();
+        };
+        client = http.request(
+          {
+            hostname: "127.0.0.1",
+            port,
+            path: `/api/builtin/symbol/symbol-market/${tenant.id}/message:stream`,
+            method: "POST",
+            headers: {
+              authorization: "Bearer integration-symbol-token",
+              "content-type": "application/json",
+            },
+          },
+          (response) => {
+            response.once("data", (chunk) => {
+              firstChunk = chunk.toString("utf8");
+              client.destroy();
+              finish();
+            });
+            response.once("error", (error) => finish(error));
+          },
+        );
+        client.once("error", (error) => {
+          if (!settled && (error as NodeJS.ErrnoException).code !== "ECONNRESET")
+            finish(error);
+        });
+        client.end(JSON.stringify({ message: { parts: [{ text: "分析 AAPL" }] } }));
+      });
+      const taskId = firstChunk.match(/"taskId":"([^"]+)"/)?.[1];
+      expect(taskId).toBeTruthy();
+
+      let restored: Awaited<ReturnType<typeof getSymbolTask>>;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        restored = await getSymbolTask("symbol-market", tenant.id, taskId!);
+        if (restored?.status.state === "TASK_STATE_COMPLETED") break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(restored?.status.state).toBe("TASK_STATE_COMPLETED");
+
+      const replayed = await new Promise<string>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        const client = http.request(
+          {
+            hostname: "127.0.0.1",
+            port,
+            path: `/api/builtin/symbol/symbol-market/${tenant.id}/tasks/${taskId}:subscribe`,
+            method: "POST",
+            headers: {
+              authorization: "Bearer integration-symbol-token",
+              "content-type": "application/json",
+            },
+          },
+          (response) => {
+            response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+            response.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+            response.on("error", reject);
+          },
+        );
+        client.on("error", reject);
+        client.end(JSON.stringify({ tenant: tenant.id }));
+      });
+      expect(replayed).toContain("TASK_STATE_COMPLETED");
+      expect(replayed).toContain("断线后重连仍保持同一份研究结果。");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      config.deepseekApiKey = previousKey;
+      config.longbridgeEnabled = previousLongbridge;
+      config.symbolInternalToken = previousInternalToken;
+      fetchMock.mockRestore();
+    }
   });
 });
 

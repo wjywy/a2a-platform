@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:22-trixie-slim AS build
 WORKDIR /app
 # The runtime image serves API and Worker code only. The console has a separate
 # image, so do not build Vite here as well when BuildKit builds services in
@@ -13,7 +13,7 @@ COPY . .
 RUN npm --workspace @a2a-platform/api run build \
  && npm --workspace @a2a-platform/health-worker run build
 
-FROM node:22-alpine
+FROM node:22-trixie-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app /app

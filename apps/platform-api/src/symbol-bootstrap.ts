@@ -2,6 +2,7 @@ import { AgentCard } from "@a2a-js/sdk";
 import { config } from "./config.js";
 import { query, transaction } from "./db.js";
 import { encryptCredential } from "./credential-service.js";
+import { ensureAgentPolicy } from "./agent-policy-service.js";
 import { symbolAgentSlugs, symbolCard } from "./symbol-service.js";
 
 /**
@@ -138,6 +139,10 @@ async function migrateLegacyMarketRuntime(
 /** Registers or upgrades bundled Agents and repairs the known legacy market runtime. */
 export async function ensureSymbolBuiltinAgents(): Promise<void> {
   if (!config.symbolInternalToken) {
+    if (process.env.NODE_ENV === "production")
+      throw new Error(
+        "生产环境必须配置 SYMBOL_INTERNAL_TOKEN，才能注册内置 Symbol Agent。",
+      );
     console.warn(
       "SYMBOL_INTERNAL_TOKEN is absent; built-in Symbol agents are not registered.",
     );
@@ -176,6 +181,7 @@ export async function ensureSymbolBuiltinAgents(): Promise<void> {
       ],
     );
     const agentId = rows[0].id;
+    await ensureAgentPolicy(agentId, "symbol-bootstrap");
     await query(
       `INSERT INTO agent_instances(agent_id,name,card_url,selected_interface,status,health_status,credential_ciphertext,credential_iv,credential_tag,credential_key_version,last_health_at)
        VALUES($1,'built-in',$2,$3,'active','healthy',$4,$5,$6,$7,now())

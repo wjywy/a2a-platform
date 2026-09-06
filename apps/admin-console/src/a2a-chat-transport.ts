@@ -1,5 +1,5 @@
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
-import { streamStudioAgent } from "./api";
+import { streamStudioAgent, streamStudioAgentTask, type SseEnvelope } from "./api";
 
 type Config = () => {
   slug: string;
@@ -11,6 +11,8 @@ type Config = () => {
     status: "connecting" | "receiving" | "completed" | "error",
   ) => void;
 };
+
+type StreamStatus = "connecting" | "receiving" | "completed" | "error";
 
 // The gateway imposes a 60-second invocation ceiling.  Keep a small client
 // margin so a misbehaving proxy or a remote Agent that never closes its SSE
@@ -51,6 +53,56 @@ function lastText(message: UIMessage | undefined) {
       .join("\n") ?? ""
   );
 }
+
+function toUiMessageStream(input: {
+  events: AsyncIterable<SseEnvelope>;
+  id: string;
+  abortSignal?: AbortSignal;
+  onEvent?: (event: unknown) => void;
+  onStatus?: (status: StreamStatus) => void;
+}) {
+  return new ReadableStream<UIMessageChunk>({
+    start: async (controller) => {
+      controller.enqueue({ type: "text-start", id: input.id });
+      input.onStatus?.("connecting");
+      try {
+        let emitted = "";
+        for await (const event of input.events) {
+          input.onEvent?.(event.data);
+          input.onStatus?.("receiving");
+          const failure = streamFailure(event.data);
+          if (failure) throw new Error(failure);
+          const text = [...new Set(findTexts(event.data))].join("\n");
+          const delta = text.startsWith(emitted)
+            ? text.slice(emitted.length)
+            : text === emitted
+              ? ""
+              : text;
+          if (delta) controller.enqueue({ type: "text-delta", id: input.id, delta });
+          emitted = text;
+        }
+        controller.enqueue({ type: "text-end", id: input.id });
+        controller.enqueue({ type: "finish", finishReason: "stop" });
+        input.onStatus?.("completed");
+        controller.close();
+      } catch (error) {
+        if (input.abortSignal?.aborted) {
+          controller.close();
+          return;
+        }
+        input.onStatus?.("error");
+        const errorText =
+          error instanceof DOMException && error.name === "TimeoutError"
+            ? "Agent 在 70 秒内没有返回终态。请重试，或检查该 Agent 的运行日志。"
+            : error instanceof Error
+              ? error.message
+              : "A2A 调用失败";
+        controller.enqueue({ type: "error", errorText });
+        controller.close();
+      }
+    },
+  });
+}
 const MAX_CONTEXT_CHARS = 12_000;
 const MAX_CONTEXT_MESSAGES = 14;
 
@@ -85,68 +137,50 @@ export class A2AChatTransport implements ChatTransport<UIMessage> {
     const { slug, token, tenantId, taskId, onEvent, onStatus } = this.config();
     const prompt = promptForMessages(options.messages, taskId);
     if (!slug || !token || !tenantId) throw new Error("请先登录并选择租户与 Agent。");
-    return new ReadableStream<UIMessageChunk>({
-      start: async (controller) => {
-        const id = crypto.randomUUID();
-        controller.enqueue({ type: "text-start", id });
-        onStatus?.("connecting");
-        try {
-          let emitted = "";
-          const terminalDeadline = AbortSignal.timeout(
-            STREAM_TERMINAL_TIMEOUT_MS,
-          );
-          for await (const event of streamStudioAgent({
-            slug,
-            token,
-            tenantId,
-            question: prompt,
-            continueTaskId: taskId,
-            signal: options.abortSignal
-              ? AbortSignal.any([options.abortSignal, terminalDeadline])
-              : terminalDeadline,
-          })) {
-            onEvent?.(event.data);
-            onStatus?.("receiving");
-            const failure = streamFailure(event.data);
-            if (failure) throw new Error(failure);
-            const text = [...new Set(findTexts(event.data))].join("\n");
-            // A2A status snapshots often repeat the complete message. Emit only
-            // the suffix so the AI SDK transcript remains readable.
-            const delta = text.startsWith(emitted)
-              ? text.slice(emitted.length)
-              : text === emitted
-                ? ""
-                : text;
-            if (delta) controller.enqueue({ type: "text-delta", id, delta });
-            emitted = text;
-          }
-          controller.enqueue({ type: "text-end", id });
-          controller.enqueue({ type: "finish", finishReason: "stop" });
-          onStatus?.("completed");
-          controller.close();
-        } catch (error) {
-          if (options.abortSignal?.aborted) {
-            controller.close();
-            return;
-          }
-          onStatus?.("error");
-          const errorText =
-            error instanceof DOMException && error.name === "TimeoutError"
-              ? "Agent 在 70 秒内没有返回终态。请重试，或检查该 Agent 的运行日志。"
-              : error instanceof Error
-                ? error.message
-                : "A2A 调用失败";
-          controller.enqueue({
-            type: "error",
-            errorText,
-          });
-          controller.close();
-        }
-      },
+    return toUiMessageStream({
+      events: streamStudioAgent({
+        slug,
+        token,
+        tenantId,
+        question: prompt,
+        continueTaskId: taskId,
+        signal: options.abortSignal
+          ? AbortSignal.any([
+              options.abortSignal,
+              AbortSignal.timeout(STREAM_TERMINAL_TIMEOUT_MS),
+            ])
+          : AbortSignal.timeout(STREAM_TERMINAL_TIMEOUT_MS),
+      }),
+      id: crypto.randomUUID(),
+      abortSignal: options.abortSignal,
+      onEvent,
+      onStatus,
     });
   }
-  async reconnectToStream() {
-    return null;
+  async reconnectToStream(options: {
+    chatId: string;
+    abortSignal?: AbortSignal;
+  }) {
+    const { slug, token, tenantId, taskId, onEvent, onStatus } = this.config();
+    if (!slug || !token || !tenantId || !taskId) return null;
+    return toUiMessageStream({
+      events: streamStudioAgentTask({
+        slug,
+        token,
+        tenantId,
+        taskId,
+        signal: options.abortSignal
+          ? AbortSignal.any([
+              options.abortSignal,
+              AbortSignal.timeout(STREAM_TERMINAL_TIMEOUT_MS),
+            ])
+          : AbortSignal.timeout(STREAM_TERMINAL_TIMEOUT_MS),
+      }),
+      id: crypto.randomUUID(),
+      abortSignal: options.abortSignal,
+      onEvent,
+      onStatus,
+    });
   }
 }
 

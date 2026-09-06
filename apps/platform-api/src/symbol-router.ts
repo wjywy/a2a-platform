@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "node:crypto";
 import {
   AgentCard,
   formatSSEEvent,
@@ -9,13 +10,25 @@ import {
 } from "@a2a-js/sdk";
 import { asyncHandler } from "./http.js";
 import { config } from "./config.js";
+import type { RoutingDecision } from "./symbol-intent-service.js";
 import {
   cancelSymbolTask,
   getSymbolTask,
   handleSymbolMessage,
   isSymbolAgentSlug,
   symbolCard,
+  type SymbolAgentSlug,
 } from "./symbol-service.js";
+import {
+  abortSymbolStream,
+  appendSymbolStreamEvent,
+  appendSymbolStreamText,
+  bindSymbolStream,
+  createSymbolStream,
+  findSymbolStream,
+  subscribeSymbolStream,
+  type ActiveSymbolStream,
+} from "./symbol-stream-service.js";
 
 const router = Router();
 
@@ -39,7 +52,10 @@ function streamingStatusEvent(input: {
   taskId: string;
   contextId: string;
   text?: string;
-}) {
+  sequence?: number;
+  textHash?: string;
+  route?: Pick<RoutingDecision, "intentType" | "taskRelation" | "route" | "missing" | "providerAllowed">;
+}): Record<string, unknown> {
   const message = input.text
     ? {
         messageId: crypto.randomUUID(),
@@ -47,7 +63,7 @@ function streamingStatusEvent(input: {
         contextId: input.contextId,
         role: "ROLE_AGENT",
         parts: [{ text: input.text }],
-        metadata: {},
+        metadata: { messageSource: "agent-authored" },
         extensions: [],
         referenceTaskIds: [],
       }
@@ -63,13 +79,114 @@ function streamingStatusEvent(input: {
           message,
           timestamp: new Date().toISOString(),
         },
-        metadata: { streaming: true },
+        metadata: {
+          streaming: true,
+          ...(input.route ? { route: input.route } : {}),
+          messageSource: input.text ? "agent-authored" : "protocol",
+          ...(input.sequence !== undefined ? { sequence: input.sequence } : {}),
+          ...(input.textHash ? { textHash: input.textHash } : {}),
+          ...(input.text !== undefined ? { textLength: input.text.length } : {}),
+        },
       }),
     },
-  });
+  }) as Record<string, unknown>;
 }
 
 export const __symbolRouterInternals = { streamingStatusEvent };
+
+function requestTenant(req: import("express").Request) {
+  const pathTenant = req.params.tenant;
+  if (typeof pathTenant === "string" && pathTenant) return pathTenant;
+  const body = req.body as { tenant?: unknown } | undefined;
+  return typeof body?.tenant === "string" ? body.tenant : "";
+}
+
+function requestTaskId(req: import("express").Request) {
+  const body = req.body as {
+    message?: { taskId?: unknown };
+    id?: unknown;
+  } | undefined;
+  if (typeof body?.message?.taskId === "string" && body.message.taskId)
+    return body.message.taskId;
+  return typeof body?.id === "string" && body.id ? body.id : undefined;
+}
+
+function terminalStreamEvent(result: Record<string, unknown>) {
+  return StreamResponse.toJSON({
+    payload: { $case: "task", value: Task.fromJSON(result) },
+  }) as Record<string, unknown>;
+}
+
+function writeStreamHeaders(res: import("express").Response) {
+  Object.entries(SSE_HEADERS).forEach(([key, value]) =>
+    res.setHeader(key, value),
+  );
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+}
+
+function writeStreamEvent(
+  res: import("express").Response,
+  event: Record<string, unknown>,
+) {
+  if (!res.destroyed && !res.writableEnded) res.write(formatSSEEvent(event));
+}
+
+async function executeSymbolStream(
+  stream: ActiveSymbolStream,
+  slug: import("./symbol-service.js").SymbolAgentSlug,
+  tenantId: string,
+  body: unknown,
+  requestId: string,
+) {
+  let route: Parameters<typeof streamingStatusEvent>[0]["route"];
+  try {
+    const result = await handleSymbolMessage(slug, tenantId, body, {
+      requestId,
+      signal: stream.controller.signal,
+      onRoute: (decision) => { route = { intentType: decision.intentType, taskRelation: decision.taskRelation, route: decision.route, missing: decision.missing, providerAllowed: decision.providerAllowed }; },
+      onStart: ({ taskId, contextId }) => {
+        bindSymbolStream(stream, tenantId, slug, taskId, contextId);
+        appendSymbolStreamEvent(
+          stream,
+          streamingStatusEvent({ taskId, contextId }),
+        );
+      },
+      onDelta: (delta, { taskId, contextId }) => {
+        const snapshot = appendSymbolStreamText(stream, delta);
+        appendSymbolStreamEvent(
+          stream,
+          streamingStatusEvent({
+            taskId,
+            contextId,
+            text: snapshot.text,
+            route,
+            sequence: snapshot.sequence,
+            textHash: crypto
+              .createHash("sha256")
+              .update(snapshot.text)
+              .digest("hex"),
+          }),
+        );
+      },
+    });
+    appendSymbolStreamEvent(
+      stream,
+      terminalStreamEvent(result as Record<string, unknown>),
+    );
+    return result;
+  } catch (error) {
+    appendSymbolStreamEvent(stream, {
+      error: {
+        message:
+          error instanceof Error ? error.message : "Symbol Agent 流式调用失败。",
+      },
+    });
+    throw error;
+  } finally {
+    stream.complete();
+  }
+}
 
 router.options(
   "/api/builtin/symbol/:slug/:tenant/message\\:send",
@@ -119,7 +236,7 @@ async function send(
     return;
   }
   requireInternal(req);
-  const tenantId = req.params.tenant ? String(req.params.tenant) : "";
+  const tenantId = requestTenant(req);
   if (!tenantId) {
     res.status(400).json({ error: "缺少 tenant。" });
     return;
@@ -143,52 +260,40 @@ async function stream(
     return;
   }
   requireInternal(req);
-  const tenantId = req.params.tenant ? String(req.params.tenant) : "";
+  const tenantId = requestTenant(req);
   if (!tenantId) {
     res.status(400).json({ error: "缺少 tenant。" });
     return;
   }
-  Object.entries(SSE_HEADERS).forEach(([key, value]) =>
-    res.setHeader(key, value),
+  const activeTaskId = requestTaskId(req);
+  const existing = activeTaskId
+    ? findSymbolStream(tenantId, slug, activeTaskId)
+    : undefined;
+  const active =
+    existing && !existing.done
+      ? existing
+      : createSymbolStream({ tenantId, slug, taskId: activeTaskId });
+  writeStreamHeaders(res);
+  const unsubscribe = subscribeSymbolStream(active, (event) =>
+    writeStreamEvent(res, event),
   );
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-  const streamController = new AbortController();
-  const abortStream = () => streamController.abort();
-  res.once("close", abortStream);
-  let emitted = "";
+  const onClose = () => unsubscribe();
+  res.once("close", onClose);
   try {
-    const result = await handleSymbolMessage(slug, tenantId, req.body, {
-      signal: streamController.signal,
-      onStart: ({ taskId, contextId }) => {
-        res.write(
-          formatSSEEvent(streamingStatusEvent({ taskId, contextId })),
-        );
-      },
-      onDelta: (delta, { taskId, contextId }) => {
-        emitted += delta;
-        res.write(
-          formatSSEEvent(
-            streamingStatusEvent({ taskId, contextId, text: emitted }),
-          ),
-        );
-      },
-    });
-    // `handleSymbolMessage` deliberately returns the portable A2A JSON shape.
-    // Rehydrate it before protobuf serialization; passing a plain object here
-    // makes the SDK emit `UNRECOGNIZED` enums and empty parts, which in turn
-    // leaves AI SDK with a successful but visually blank assistant message.
-    const event = StreamResponse.toJSON({
-      payload: { $case: "task", value: Task.fromJSON(result) },
-    });
-    res.write(formatSSEEvent(event));
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Symbol Agent 流式调用失败。";
-    if (!res.destroyed) res.write(formatSSEEvent({ error: { message } }));
+    await executeSymbolStream(
+      active,
+      slug,
+      tenantId,
+      req.body,
+      req.header("x-request-id") ?? crypto.randomUUID(),
+    );
+  } catch {
+    // The execution layer has already published the error so a later
+    // subscriber sees the same terminal failure as the original client.
   } finally {
-    res.off("close", abortStream);
-    res.end();
+    res.off("close", onClose);
+    unsubscribe();
+    if (!res.destroyed && !res.writableEnded) res.end();
   }
 }
 router.post(
@@ -197,12 +302,67 @@ router.post(
 );
 router.post("/api/builtin/symbol/:slug/message\\:stream", asyncHandler(stream));
 
+async function subscribe(
+  req: import("express").Request,
+  res: import("express").Response,
+): Promise<void> {
+  const slug = String(req.params.slug);
+  const tenantId = requestTenant(req);
+  const taskId = String(req.params.taskId);
+  if (!isSymbolAgentSlug(slug) || !tenantId || !taskId) {
+    res.status(404).json({ error: "任务不存在" });
+    return;
+  }
+  requireInternal(req);
+  const active = findSymbolStream(tenantId, slug, taskId);
+  if (active) {
+    writeStreamHeaders(res);
+    const unsubscribe = subscribeSymbolStream(active, (event) =>
+      writeStreamEvent(res, event),
+    );
+    const onClose = () => unsubscribe();
+    res.once("close", onClose);
+    try {
+      await active.completion;
+    } finally {
+      res.off("close", onClose);
+      unsubscribe();
+      if (!res.destroyed && !res.writableEnded) res.end();
+    }
+    return;
+  }
+  const result = await getSymbolTask(slug, tenantId, taskId);
+  if (!result) {
+    res.status(404).json({ error: "任务不存在" });
+    return;
+  }
+  writeStreamHeaders(res);
+  writeStreamEvent(res, terminalStreamEvent(result));
+  if (!res.destroyed && !res.writableEnded) res.end();
+}
+router.get(
+  "/api/builtin/symbol/:slug/:tenant/tasks/:taskId\\:subscribe",
+  asyncHandler(subscribe),
+);
+router.post(
+  "/api/builtin/symbol/:slug/:tenant/tasks/:taskId\\:subscribe",
+  asyncHandler(subscribe),
+);
+router.get(
+  "/api/builtin/symbol/:slug/tasks/:taskId\\:subscribe",
+  asyncHandler(subscribe),
+);
+router.post(
+  "/api/builtin/symbol/:slug/tasks/:taskId\\:subscribe",
+  asyncHandler(subscribe),
+);
+
 async function task(
   req: import("express").Request,
   res: import("express").Response,
 ): Promise<void> {
   const slug = String(req.params.slug);
-  const tenantId = req.params.tenant ? String(req.params.tenant) : "";
+  const tenantId = requestTenant(req);
   const taskId = String(req.params.taskId);
   if (!isSymbolAgentSlug(slug) || !tenantId || !taskId) {
     res.status(404).json({ error: "任务不存在" });
@@ -221,13 +381,14 @@ async function cancel(
   res: import("express").Response,
 ): Promise<void> {
   const slug = String(req.params.slug);
-  const tenantId = req.params.tenant ? String(req.params.tenant) : "";
+  const tenantId = requestTenant(req);
   const taskId = String(req.params.taskId);
   if (!isSymbolAgentSlug(slug) || !tenantId || !taskId) {
     res.status(404).json({ error: "任务不存在" });
     return;
   }
   requireInternal(req);
+  abortSymbolStream(tenantId, slug, taskId);
   const result = await cancelSymbolTask(slug, tenantId, taskId);
   if (!result) {
     res.status(404).json({ error: "任务不存在" });

@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:22-trixie-slim AS build
 WORKDIR /app
 # This build runs on the GitHub release runner, not the 1.8 GiB production
 # host. Vite's optimized production graph exceeds Node's 512 MiB default heap.

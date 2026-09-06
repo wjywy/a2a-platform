@@ -34,6 +34,21 @@ describe("bundled Symbol A2A agents", () => {
     const task = Task.fromJSON(json);
     expect(task.status?.state.toString()).toBe("6");
     expect(task.status?.message?.parts[0]?.content?.$case).toBe("text");
+    expect(task.status?.message?.metadata).toMatchObject({
+      messageSource: "agent-authored",
+    });
+    const protocolTask = Task.fromJSON(
+      taskJson({
+        taskId: "1d5b571f-a143-4d59-a48d-cd1fe6e10f94",
+        contextId: "c076c621-a11d-4ca3-9c37-2efb0d0a87d9",
+        state: "TASK_STATE_FAILED",
+        text: "请求失败。",
+        messageSource: "protocol",
+      }),
+    );
+    expect(protocolTask.status?.message?.metadata).toMatchObject({
+      messageSource: "protocol",
+    });
   });
 
   it("accepts both A2A text-part wire encodings from REST transports", () => {
@@ -71,6 +86,10 @@ describe("bundled Symbol A2A agents", () => {
                     function: {
                       name: "extract_symbol_intent",
                       arguments: JSON.stringify({
+                        intentType: "research_request",
+                        taskRelation: "new",
+                        controlAction: "",
+                        uncertaintyReasons: [],
                         symbol: "",
                         companyName: "苹果",
                         assetType: "stock",
@@ -119,6 +138,49 @@ describe("bundled Symbol A2A agents", () => {
     }
   });
 
+  it("lets the latest explicit target correction replace the prior target", async () => {
+    const originalKey = config.deepseekApiKey;
+    config.deepseekApiKey = "test-key";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { tool_calls: [{ function: {
+            name: "extract_symbol_intent",
+            arguments: JSON.stringify({
+              intentType: "correction",
+              taskRelation: "active",
+              controlAction: "",
+              uncertaintyReasons: [],
+              symbol: "TSLA",
+              companyName: "",
+              assetType: "stock",
+              market: "NASDAQ",
+              period: "",
+              question: "继续分析",
+              thesis: "",
+              missing: [],
+              confidence: 0.99,
+            }),
+          } }] } }],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const intent = await __symbolServiceInternals.extractIntent(
+        "代码改成 TSLA",
+        { symbol: "AAPL", companyName: "苹果" },
+        "symbol-market",
+      );
+      expect(intent).toMatchObject({ symbol: "TSLA" });
+      expect(intent.companyName).toBeUndefined();
+    } finally {
+      config.deepseekApiKey = originalKey;
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("resolves a company name only after extraction has supplied it", () => {
     expect(
       __symbolServiceInternals.providerSymbolForCompany("apple", {
@@ -127,6 +189,52 @@ describe("bundled Symbol A2A agents", () => {
         ],
       }),
     ).toBe("AAPL");
+  });
+
+  it("keeps ambiguous company matches as bounded candidates instead of guessing", () => {
+    const raw = {
+      quotes: [
+        { symbol: "AAA", shortname: "Apple Holdings", exchange: "NASDAQ" },
+        { symbol: "BBB", shortname: "Apple Technologies", exchange: "NYSE" },
+      ],
+    };
+    expect(__symbolServiceInternals.providerSymbolForCompany("Apple", raw)).toBeUndefined();
+    expect(__symbolServiceInternals.providerCompanyCandidates("Apple", raw)).toEqual([
+      { symbol: "AAA", name: "Apple Holdings", exchange: "NASDAQ" },
+      { symbol: "BBB", name: "Apple Technologies", exchange: "NYSE" },
+    ]);
+  });
+
+  it("resolves a deterministic fixture set of twenty Chinese company names", () => {
+    const fixtures = [
+      ["苹果", "AAPL"],
+      ["特斯拉", "TSLA"],
+      ["英伟达", "NVDA"],
+      ["微软", "MSFT"],
+      ["亚马逊", "AMZN"],
+      ["谷歌", "GOOGL"],
+      ["Meta", "META"],
+      ["奈飞", "NFLX"],
+      ["英特尔", "INTC"],
+      ["博通", "AVGO"],
+      ["甲骨文", "ORCL"],
+      ["Adobe", "ADBE"],
+      ["阿里巴巴", "BABA"],
+      ["腾讯", "0700"],
+      ["台积电", "TSM"],
+      ["京东", "JD"],
+      ["拼多多", "PDD"],
+      ["网易", "NTES"],
+      ["百度", "BIDU"],
+      ["伯克希尔哈撒韦", "BRK.B"],
+    ] as const;
+    for (const [name, symbol] of fixtures) {
+      expect(
+        __symbolServiceInternals.providerSymbolForCompany(name, {
+          quotes: [{ symbol, shortname: name, longname: name, exchange: "TEST" }],
+        }),
+      ).toBe(symbol);
+    }
   });
 
   it("does not fall back to string parsing when the intent model is unavailable", async () => {
@@ -142,6 +250,45 @@ describe("bundled Symbol A2A agents", () => {
       ).rejects.toThrow("AI 意图解析服务未配置");
     } finally {
       config.deepseekApiKey = originalKey;
+    }
+  });
+
+  it("rejects malformed structured intent instead of guessing from user text", async () => {
+    const originalKey = config.deepseekApiKey;
+    config.deepseekApiKey = "test-key";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                tool_calls: [
+                  {
+                    function: {
+                      name: "extract_symbol_intent",
+                      arguments: JSON.stringify({ symbol: "AAPL" }),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(
+        __symbolServiceInternals.extractIntent(
+          "帮我分析苹果",
+          {},
+          "symbol-market",
+        ),
+      ).rejects.toThrow();
+    } finally {
+      config.deepseekApiKey = originalKey;
+      vi.unstubAllGlobals();
     }
   });
 
@@ -288,6 +435,12 @@ describe("bundled Symbol A2A agents", () => {
       const request = fetchMock.mock.calls[0]?.[1] as { body: string };
       expect(JSON.parse(request.body).messages.at(-1).content).toContain(
         "详细一点",
+      );
+      expect(JSON.parse(request.body).messages.at(-1).content).toContain(
+        "分析 AAPL",
+      );
+      expect(JSON.parse(request.body).messages.at(-1).content).not.toContain(
+        "AAPL 最新收盘/报价",
       );
     } finally {
       config.deepseekApiKey = originalKey;

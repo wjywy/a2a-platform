@@ -57,12 +57,36 @@ export const config = {
    * browser bundle.
    */
   studioApiKey: process.env.STUDIO_API_KEY ?? "",
-  /** Internal credential used only when the platform calls its bundled agents. */
-  symbolInternalToken: process.env.SYMBOL_INTERNAL_TOKEN ?? "",
+  /**
+   * Internal credential used only when the platform calls its bundled agents.
+   * A deterministic development-only value keeps a fresh local compose
+   * database bootstrappable; production must provide an explicit secret.
+   */
+  symbolInternalToken:
+    process.env.SYMBOL_INTERNAL_TOKEN ||
+    (process.env.NODE_ENV === "production" ? "" : "local-symbol-internal-token"),
   // In Docker development this is http://api:3000, avoiding a host-network hairpin.
   // Production may leave it equal to PLATFORM_ORIGIN.
   symbolInternalOrigin: (process.env.SYMBOL_INTERNAL_ORIGIN || process.env.PLATFORM_ORIGIN || "http://localhost:8080").replace(/\/$/, ""),
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",
   deepseekModel: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
   finnhubApiKey: process.env.FINNHUB_API_KEY ?? "",
+  longbridgeEnabled: process.env.LONGBRIDGE_ENABLED !== "false",
+  longbridgeRegion: process.env.LONGBRIDGE_REGION ?? "",
+  longbridgeHttpUrl:
+    process.env.LONGBRIDGE_HTTP_URL ?? "https://openapi.longbridge.com",
+  longbridgeAppKey: process.env.LONGBRIDGE_APP_KEY ?? "",
+  longbridgeAppSecret: process.env.LONGBRIDGE_APP_SECRET ?? "",
+  longbridgeAccessToken: process.env.LONGBRIDGE_ACCESS_TOKEN ?? "",
+  longbridgeClientId: process.env.LONGBRIDGE_CLIENT_ID ?? "",
+  longbridgeOAuthToken: process.env.LONGBRIDGE_OAUTH_TOKEN ?? "",
+  longbridgeTimeoutMs: Number(process.env.LONGBRIDGE_TIMEOUT_MS ?? 12_000),
+  longbridgeMaxConcurrent: Number(
+    process.env.LONGBRIDGE_MAX_CONCURRENT ?? 4,
+  ),
+  longbridgeMaxOptionContracts: Number(
+    process.env.LONGBRIDGE_MAX_OPTION_CONTRACTS ?? 500,
+  ),
+  memoryMaxEntries: Number(process.env.MEMORY_MAX_ENTRIES ?? 40),
+  memoryMaxContextChars: Number(process.env.MEMORY_MAX_CONTEXT_CHARS ?? 12_000),
 };

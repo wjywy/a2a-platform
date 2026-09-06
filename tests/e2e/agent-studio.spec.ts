@@ -194,7 +194,9 @@ test("Studio closes a failed SSE stream and restores the composer", async ({
   await page.getByRole("button", { name: "发送" }).click();
   await expect(page.getByRole("alert")).toContainText("模拟远端 Agent 失败");
   await expect(composer).toBeEnabled();
-  await expect(page.getByRole("button", { name: "停止" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "停止生成", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("conversation lifecycle endpoints retain history, idempotency, labels and export", async ({

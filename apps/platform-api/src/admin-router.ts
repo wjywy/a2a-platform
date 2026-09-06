@@ -305,6 +305,66 @@ router.post(
     });
   }),
 );
+router.post(
+  "/studio/agents/:slug/a2a/rest/tasks/:taskId\\:subscribe",
+  asyncHandler(async (req, res) => {
+    const tenantId = z.string().uuid().parse(req.body?.tenantId);
+    const agent = await studioAgentPermission(req, tenantId, id(req, "slug"));
+    const serviceCredential = await resolveStudioServiceCredential(tenantId);
+    if (serviceCredential.key.tenantId !== tenantId)
+      throw new AppError(
+        403,
+        "STUDIO_CREDENTIAL_TENANT_MISMATCH",
+        "当前租户与在线调试服务凭据不匹配。",
+      );
+    const gatewayUrl = new URL(
+      `/agents/${encodeURIComponent(agent.slug)}/a2a/rest/tasks/${encodeURIComponent(id(req, "taskId"))}:subscribe`,
+      `${config.symbolInternalOrigin}/`,
+    );
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    res.once("close", abort);
+    try {
+      const response = await fetch(gatewayUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": serviceCredential.secret,
+          "x-request-id": req.requestId ?? crypto.randomUUID(),
+        },
+        body: "{}",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => undefined);
+        const error = payload as { error?: { code?: string; message?: string } } | undefined;
+        throw new AppError(
+          response.status,
+          error?.error?.code ?? "STUDIO_GATEWAY_FAILED",
+          error?.error?.message ?? `Agent 任务重连失败 (${response.status})。`,
+        );
+      }
+      if (!response.body)
+        throw new AppError(502, "STUDIO_STREAM_MISSING", "Agent 未返回重连流。 ");
+      res.status(response.status);
+      res.setHeader(
+        "content-type",
+        response.headers.get("content-type") ?? "text/event-stream; charset=utf-8",
+      );
+      res.setHeader("cache-control", "no-cache, no-transform");
+      res.setHeader("x-accel-buffering", "no");
+      res.flushHeaders();
+      Readable.fromWeb(response.body as never).pipe(res);
+      await writeAudit(auditContext(req, tenantId), "studio.agent_reconnected", {
+        type: "agent",
+        id: agent.id,
+        agentId: agent.id,
+      }, { taskId: id(req, "taskId") });
+    } finally {
+      res.off("close", abort);
+    }
+  }),
+);
 router.get(
   "/users",
   requirePlatformAdmin,

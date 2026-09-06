@@ -2,11 +2,29 @@ import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { config } from "./config.js";
 import { query } from "./db.js";
+import { decideRoute, type RoutingDecision, type Intent, type IntentDefinition } from "./symbol-intent-service.js";
 
 type Json = Record<string, unknown>;
-export type SymbolGraphInput = { tenantId: string; taskId: string; agentSlug: string; intent: Json };
-export type SymbolGraphOutput = { text: string; data: Json };
-export type SymbolExecutor = (agentSlug: string) => Promise<SymbolGraphOutput>;
+export type SymbolGraphInput = {
+  tenantId: string;
+  taskId: string;
+  agentSlug: string;
+  intent: Json;
+  requestId?: string;
+  signal?: AbortSignal;
+  routing?: RoutingDecision;
+};
+export type SymbolGraphOutput = { data: Json };
+export type SymbolExecutionContext = {
+  tenantId: string;
+  taskId: string;
+  requestId: string;
+  signal?: AbortSignal;
+};
+export type SymbolExecutor = (
+  agentSlug: string,
+  context: SymbolExecutionContext,
+) => Promise<SymbolGraphOutput>;
 type GraphState = { agentSlug: string; plan: string[]; evidence: Record<string, SymbolGraphOutput> };
 
 const specialistSlugs = ["symbol-market", "symbol-company", "symbol-technical-options", "symbol-news", "symbol-risk", "symbol-critic"] as const;
@@ -60,7 +78,14 @@ export async function getSymbolRunTrajectory(tenantId: string, taskId: string, a
 
 /** Durable LangGraph orchestration; supervisor runs each specialist node then writes its brief. */
 export async function runSymbolGraph(input: SymbolGraphInput, execute: SymbolExecutor): Promise<SymbolGraphOutput> {
+  const decision = decideRoute({ slug: input.agentSlug, needs: input.agentSlug === "symbol-critic" ? ["symbol", "thesis"] : ["symbol"] } as IntentDefinition, input.intent as Intent);
+  if (!input.routing?.providerAllowed || input.routing.route !== "research" || !decision.providerAllowed || !input.intent.symbol) {
+    const deniedId = await upsertRun(input, "failed", undefined, { code: "PROVIDER_ROUTE_DENIED" });
+    await event(deniedId, "provider_gate", "error", { allowed: false, reason: "PROVIDER_ROUTE_DENIED" });
+    throw new Error("PROVIDER_ROUTE_DENIED");
+  }
   const runId = await upsertRun(input, "running");
+  await event(runId, "provider_gate", "tool", { allowed: true, route: input.routing.route, intentType: decision.intentType });
   // Nodes are selected from the registered Agent Card at runtime. LangGraph's
   // fluent type builder cannot infer this dynamic node set, while State remains
   // fully defined above and is validated by the compiled graph at invocation.
@@ -72,17 +97,38 @@ export async function runSymbolGraph(input: SymbolGraphInput, execute: SymbolExe
   for (const slug of specialistSlugs) {
     const node = nodeFor(slug);
     graph.addNode(node, async () => {
+      if (input.signal?.aborted) throw new Error("请求已取消");
       await event(runId, node, "node_started", { agent: slug });
-      const result = await execute(slug);
+      const result = await execute(slug, {
+        tenantId: input.tenantId,
+        taskId: input.taskId,
+        requestId: input.requestId ?? input.taskId,
+        signal: input.signal,
+      });
       await event(runId, node, "node_completed", { agent: slug, hasArtifact: Boolean(result.data) });
       return { evidence: { [slug]: result }, ...(input.agentSlug === slug ? { result } : {}) };
     });
   }
   graph.addNode("supervisor", async (state: GraphState) => {
+    if (input.signal?.aborted) throw new Error("请求已取消");
     await event(runId, "supervisor", "node_started", { evidence: Object.keys(state.evidence) });
-    const result = await execute("symbol-supervisor");
+    const result = await execute("symbol-supervisor", {
+      tenantId: input.tenantId,
+      taskId: input.taskId,
+      requestId: input.requestId ?? input.taskId,
+      signal: input.signal,
+    });
     await event(runId, "supervisor", "node_completed", { hasArtifact: Boolean(result.data) });
-    return { result };
+    return {
+      result: {
+        data: {
+          ...result.data,
+          specialistEvidence: Object.fromEntries(
+            Object.entries(state.evidence).map(([slug, evidence]) => [slug, evidence.data]),
+          ),
+        },
+      },
+    };
   });
   graph.addNode("finalize", async (state: GraphState) => { await event(runId, "finalize", "final", { plan: state.plan, evidence: Object.keys(state.evidence) }); return {}; });
   graph.addEdge(START, "plan_graph");
@@ -101,6 +147,17 @@ export async function runSymbolGraph(input: SymbolGraphInput, execute: SymbolExe
     await upsertRun(input, "completed", result.data); return result;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "未知图执行错误";
-    await event(runId, "graph", "error", { message }); await upsertRun(input, "failed", undefined, { message }); throw caught;
+    const cancelled = input.signal?.aborted || message === "请求已取消";
+    await event(runId, "graph", cancelled ? "interrupt" : "error", {
+      message,
+      ...(cancelled ? { code: "CANCELLED" } : {}),
+    });
+    await upsertRun(
+      input,
+      cancelled ? "cancelled" : "failed",
+      undefined,
+      { message, ...(cancelled ? { code: "CANCELLED" } : {}) },
+    );
+    throw caught;
   }
 }
