@@ -20,13 +20,14 @@
 - 100 deterministic multi-turn cases cover a collecting research task interrupted by capability questions, small talk or clarification explanation, then resumed with a symbol and follow-up.
 - SSE cumulative text, terminal Task, route metadata and subscribe replay remain consistent.
 
-## Not yet executed
+## Deployment evidence and release trigger
 
 | Gate | Status | Reason / next action |
 |---|---|---|
-| Real DeepSeek routing smoke | Not executed | Local environment intentionally has no `DEEPSEEK_API_KEY`. Run `npx tsx scripts/verify-symbol-routing.ts` on the deployed host with a test tenant and server-only token. |
-| CI | Not executed for this change | Requires commit and push. CI already has a server-side credential presence check and real-model stream smoke. |
-| Deployment | Not executed | No push or deployment was requested in this implementation turn. |
-| Public endpoint verification | Not executed | Requires a successful deployment first. |
+| CI | Pass | GitHub Actions run #54 completed dependency install, build, migration and the full test suite successfully. |
+| Production credential check | Pass | The deployment job confirmed that `DEEPSEEK_API_KEY` is present on the production host without exposing its value. |
+| Real DeepSeek stream smoke | Pass | The deployment job completed server-local A2A/SSE smoke tests for `symbol-market` and `symbol-company`, including terminal task completion and multiple stream events. |
+| Public endpoint verification | Pass | `https://a2a-platform.com/healthz` returned HTTP 200 after the deployment job. |
+| Symbol release image | Pending this commit | Run #54 safely reused the existing image because it only changed the deployment workflow; the preceding Symbol source release failed before image transfer. This documentation update deliberately triggers a full image build so the tested Symbol implementation is actually installed in production. |
 
-The local test matrix validates routing behaviour against mocked DeepSeek and Provider boundaries. It is not a claim of real-model classification accuracy; that evidence must come from the server-local smoke and production monitoring after deployment.
+The local test matrix validates routing behaviour against mocked DeepSeek and Provider boundaries. The production smoke proves an authenticated real-model stream, while ongoing monitoring remains necessary for classification quality across live user traffic.
