@@ -19,7 +19,7 @@ const adminHeaders = {
 };
 const testApiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:8080";
 
-test("self-registered customer can sign up, browse the safe public catalog, and log in again", async ({
+test("self-registered customer can sign up, use the full console, and log in again", async ({
   page,
   request,
 }, testInfo) => {
@@ -65,7 +65,7 @@ test("self-registered customer can sign up, browse the safe public catalog, and 
     await page.getByRole("button", { name: "注册并登录" }).click();
 
     await expect(
-      page.getByRole("heading", { name: "Agent 目录", level: 1 }),
+      page.getByRole("heading", { name: "Agent 管理", level: 1 }),
     ).toBeVisible();
     await expect(page.getByText("股票专家").first()).toBeVisible();
     await expect(page.getByText("公开可见")).toBeVisible();
@@ -78,10 +78,9 @@ test("self-registered customer can sign up, browse the safe public catalog, and 
         .last(),
     ).toBeVisible();
     await expect(page.getByText(/host\.docker\.internal/)).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /注册 Agent/ })).toHaveCount(
-      0,
-    );
-    await expect(page.getByText("后端实例", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /注册 Agent/ }).first(),
+    ).toBeVisible();
 
     await page.getByRole("button", { name: "退出登录" }).click();
     await expect(
@@ -91,7 +90,7 @@ test("self-registered customer can sign up, browse the safe public catalog, and 
     await page.getByLabel("密码").fill(password);
     await page.getByRole("button", { name: "登录" }).click();
     await expect(
-      page.getByRole("heading", { name: "Agent 目录", level: 1 }),
+      page.getByRole("heading", { name: "Agent 管理", level: 1 }),
     ).toBeVisible();
   } finally {
     if (originalAgent) {
@@ -126,7 +125,7 @@ test("self-registered customer can sign up, browse the safe public catalog, and 
   }
 });
 
-test("invited developer can activate an account and sees role-appropriate actions", async ({
+test("invited developer can activate an account and sees the full console", async ({
   page,
   request,
 }, testInfo) => {
@@ -180,10 +179,10 @@ test("invited developer can activate an account and sees role-appropriate action
     await page.getByRole("button", { name: "激活并加入" }).click();
 
     await expect(page.getByRole("heading", { name: "运行概览" })).toBeVisible();
-    await expect(page.getByText("developer", { exact: true })).toBeVisible();
+    await expect(page.getByText("开发者标签", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "平台设置", exact: true }),
-    ).toHaveCount(0);
+    ).toBeVisible();
     await page.getByRole("button", { name: "Webhook", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Webhook 端点" }),
@@ -191,7 +190,9 @@ test("invited developer can activate an account and sees role-appropriate action
     await expect(
       page.getByRole("button", { name: "创建 Webhook" }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "轮换密钥" })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "平台设置", exact: true }),
+    ).toBeVisible();
   } finally {
     if (tenantId) {
       await request.post(
@@ -309,7 +310,7 @@ test("tenant and Agent data survive the platform upgrade", async ({
   await expect(page.getByText("stock-expert").first()).toBeVisible();
 });
 
-test("375px mobile layout exposes the compact navigation without horizontal page overflow", async ({
+test("375px mobile layout exposes five navigation choices and all secondary pages without horizontal overflow", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -318,7 +319,15 @@ test("375px mobile layout exposes the compact navigation without horizontal page
   );
   await page.goto("/overview");
   await expect(page.getByRole("heading", { name: "运行概览" })).toBeVisible();
-  await expect(page.getByText("概览", { exact: true }).last()).toBeVisible();
+  const mobileNav = page.getByRole("navigation", {
+    name: "移动端主导航",
+  });
+  await expect(mobileNav.getByRole("button")).toHaveCount(5);
+  await expect(mobileNav.getByRole("button", { name: "概览" })).toBeVisible();
+  await expect(mobileNav.getByRole("button", { name: "Agent 管理" })).toBeVisible();
+  await expect(mobileNav.getByRole("button", { name: "在线调试" })).toBeVisible();
+  await expect(mobileNav.getByRole("button", { name: "任务中心" })).toBeVisible();
+  await expect(mobileNav.getByRole("button", { name: "更多功能" })).toBeVisible();
   const dimensions = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
@@ -326,10 +335,17 @@ test("375px mobile layout exposes the compact navigation without horizontal page
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(
     dimensions.clientWidth + 1,
   );
-  await page.getByText("任务", { exact: true }).last().click();
+  await mobileNav.getByRole("button", { name: "任务中心" }).click();
   await expect(page.getByRole("heading", { name: "任务中心" })).toBeVisible();
-  await page.getByText("租户", { exact: true }).last().click();
+  await mobileNav.getByRole("button", { name: "更多功能" }).click();
+  const more = page.getByRole("dialog", { name: "更多功能" });
+  await expect(more.getByRole("button", { name: "租户管理" })).toBeVisible();
+  await more.getByRole("button", { name: "租户管理" }).click();
   await expect(page.getByRole("heading", { name: "租户管理" })).toBeVisible();
+  await expect(mobileNav.getByRole("button", { name: "更多功能" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
 });
 
 test("Agent registration dialog contains operational fields and can be dismissed", async ({

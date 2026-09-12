@@ -696,3 +696,119 @@
     outline: 1px solid Highlight;
   }
 }
+
+
+/* Mobile console navigation is intentionally capped at four primary destinations
+   plus one disclosure. Secondary pages and account controls remain reachable
+   without forcing horizontal tab scrolling. */
+.mobileMoreContent {
+  display: grid;
+  gap: 18px;
+}
+
+.mobileMoreGroup {
+  display: grid;
+  gap: 6px;
+}
+
+.mobileMoreLabel {
+  padding: 0 6px;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.mobileMoreGroup :global(.ant-btn) {
+  justify-content: flex-start;
+  min-height: 44px;
+  padding-inline: 12px !important;
+  text-align: left;
+}
+
+.mobileMoreActive {
+  color: var(--color-text-primary) !important;
+  background: var(--color-surface-muted) !important;
+  font-weight: var(--font-weight-semibold);
+}
+
+.mobileMoreGroup :global(.ant-select) {
+  width: 100%;
+}
+
+.mobileMoreAccount {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+  padding: 8px 12px;
+  color: var(--color-text-primary);
+  background: var(--color-surface-muted);
+  border-radius: var(--radius-md);
+}
+
+.mobileMoreAccount > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.mobileMoreAccount small {
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    --mobile-nav-height: calc(58px + var(--safe-bottom));
+    padding-bottom: var(--mobile-nav-height);
+  }
+
+  .pageBody {
+    padding-bottom: calc(20px + var(--mobile-nav-height));
+  }
+
+  .mobileNav {
+    height: var(--mobile-nav-height);
+    justify-content: space-around;
+    overflow: hidden;
+  }
+
+  .mobileNav :global(.ant-btn) {
+    width: auto;
+    min-width: 44px;
+    height: 56px;
+    flex: 1 1 20%;
+    padding-inline: 2px !important;
+  }
+
+  .debugShell .mobileNav {
+    display: flex !important;
+  }
+
+  .debugShell .main,
+  .debugShell .pageBody {
+    height: calc(100dvh - var(--mobile-nav-height));
+  }
+
+  .mobileMoreDrawer :global(.ant-drawer-content) {
+    border-radius: 16px 16px 0 0;
+  }
+
+  .mobileMoreDrawer :global(.ant-drawer-header) {
+    padding: 16px 18px 10px;
+  }
+
+  .mobileMoreDrawer :global(.ant-drawer-body) {
+    padding: 8px 14px calc(16px + var(--safe-bottom));
+  }
+
+  .mobileNav :global(.ant-btn:active) {
+    transform: scale(0.96);
+  }
+}

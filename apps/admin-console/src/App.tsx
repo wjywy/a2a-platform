@@ -258,15 +258,12 @@ export default function App() {
   const hideRegister = useCallback(() => registerActions.current.hide(), []);
   const refreshTenants = useCallback(async () => {
     if (!token || !user) return { items: [] };
-    const items =
-      user.platformRole === "platform_admin"
-        ? (await platformApi.tenants(token, { page: 1, pageSize: 100 })).items
-        : (await platformApi.me(token)).tenants;
+    const items = (
+      await platformApi.tenants(token, { page: 1, pageSize: 100 })
+    ).items;
     setTenants(items);
     if (selectedTenantId && !items.some((item) => item.id === selectedTenantId))
       setSelectedTenantId("");
-    if (!selectedTenantId && user.platformRole !== "platform_admin" && items[0])
-      setSelectedTenantId(items[0].id);
     return { items };
   }, [token, user, selectedTenantId, setSelectedTenantId]);
   const refreshAgents = useCallback(
@@ -281,33 +278,21 @@ export default function App() {
         ? { ...agentQuery.current, ...input }
         : agentQuery.current;
       agentQuery.current = requested;
-      if (user.platformRole === "platform_admin") {
-        const result = await platformApi.agents(token, {
-          tenantId: selectedTenantId || undefined,
-          search: requested.search || undefined,
-          status: requested.status || undefined,
-        });
-        const page = {
-          items: result,
-          page: 1,
-          pageSize: result.length || 20,
-          total: result.length,
-          totalPages: 1,
-        };
-        setAgents(result);
-        setAgentPage(page);
-        return page;
-      }
-      const result = await platformApi.catalogAgents(token, {
+      const result = await platformApi.agents(token, {
         tenantId: selectedTenantId || undefined,
-        page: requested.page,
-        pageSize: requested.pageSize,
         search: requested.search || undefined,
         status: requested.status || undefined,
       });
-      setAgents(result.items);
-      setAgentPage(result);
-      return result;
+      const page = {
+        items: result,
+        page: 1,
+        pageSize: result.length || 20,
+        total: result.length,
+        totalPages: 1,
+      };
+      setAgents(result);
+      setAgentPage(page);
+      return page;
     },
     [token, user, selectedTenantId],
   );
@@ -396,13 +381,6 @@ export default function App() {
     const controller = new AbortController();
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     if (!user) return () => controller.abort();
-    if (user.platformRole !== "platform_admin" && !selectedTenantId) {
-      const interval = window.setInterval(() => void refreshAgents(), 30_000);
-      return () => {
-        controller.abort();
-        window.clearInterval(interval);
-      };
-    }
     void subscribePlatformEvents(
       token,
       selectedTenantId || undefined,
@@ -436,21 +414,9 @@ export default function App() {
   const selectedRole = tenants.find(
     (tenant) => tenant.id === selectedTenantId,
   )?.role;
-  const canWrite =
-    user?.platformRole === "platform_admin" ||
-    selectedRole === "tenant_admin" ||
-    selectedRole === "developer";
-  const canAdminister =
-    user?.platformRole === "platform_admin" || selectedRole === "tenant_admin";
-  const hasTenantAccess =
-    Boolean(selectedTenantId) ||
-    (user?.platformRole !== "platform_admin" && tenants.length > 0);
-  const effectivePage =
-    user?.platformRole !== "platform_admin" && !hasTenantAccess
-      ? "agents"
-      : user?.platformRole !== "platform_admin" && page === "settings"
-        ? "overview"
-        : page;
+  const canWrite = true;
+  const canAdminister = true;
+  const effectivePage = page;
   const cachedPageKeys = useMemo(() => {
     const mounted = new Set(visitedConsolePages);
     if (effectivePage !== "debug") mounted.add(effectivePage);
@@ -481,15 +447,8 @@ export default function App() {
     const session = await platformApi.me(accessToken);
     setUser(session.user);
     setTenants(session.tenants);
-    if (
-      session.user.platformRole !== "platform_admin" &&
-      session.tenants.length > 0 &&
-      !session.tenants.some((tenant) => tenant.id === selectedTenantId)
-    )
-      setSelectedTenantId(session.tenants[0].id);
     refreshAttempted.current = true;
-    const target =
-      destination ?? (session.tenants.length ? "overview" : "agents");
+    const target = destination ?? "overview";
     history.replaceState(null, "", `/${target}`);
     setPage(target);
     setAuthReady(true);

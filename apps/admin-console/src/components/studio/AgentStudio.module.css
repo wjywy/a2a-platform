@@ -2791,3 +2791,22 @@
     opacity: 1;
   }
 }
+
+
+/* The debug workspace lives above the console's persistent mobile navigation.
+   Its composer remains inside the reduced shell height instead of competing
+   with the fixed bar. */
+@media (max-width: 760px) {
+  .agentStudio {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .studioHistory {
+    bottom: var(--mobile-nav-height, 0px);
+  }
+
+  .studioHistoryBackdrop {
+    bottom: var(--mobile-nav-height, 0px);
+  }
+}

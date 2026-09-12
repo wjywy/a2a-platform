@@ -1,12 +1,14 @@
-import { Router } from "express";
+import {
+  Router,
+  type NextFunction,
+  type Response,
+} from "express";
 import crypto from "node:crypto";
 import { Readable } from "node:stream";
 import { z } from "zod";
 import {
   requireAuthentication,
-  requirePlatformAdmin,
-  requireTenantRole,
-  assertTenantAccess,
+  type AuthenticatedRequest,
 } from "./auth.js";
 import {
   asyncHandler,
@@ -15,7 +17,11 @@ import {
   pathParam,
 } from "./http.js";
 import { writeAudit, searchAudit, auditActions } from "./audit-service.js";
-import { AppError, NotFoundError } from "./domain.js";
+import {
+  AppError,
+  NotFoundError,
+  type TenantMemberRole,
+} from "./domain.js";
 import {
   createTenant,
   deleteTenant,
@@ -28,8 +34,6 @@ import {
   updateMember,
   removeMember,
   acceptInvitation,
-  tenantRoleForUser,
-  listTenantsForUser,
   listInvitations,
   revokeInvitation,
 } from "./tenant-service.js";
@@ -157,69 +161,78 @@ const id = (req: Parameters<typeof pathParam>[0], name: string) =>
 const actor = (req: { principal?: { id: string } }) =>
   req.principal?.id ?? "unknown";
 
+/**
+ * This router serves the internal control console. The router-level
+ * authentication middleware remains authoritative; these compatibility
+ * guards deliberately do not make role membership a second login barrier.
+ */
+const requirePlatformAdmin = (
+  _req: AuthenticatedRequest,
+  _res: Response,
+  next: NextFunction,
+): void => next();
+
+const requireTenantRole =
+  (_minimum: TenantMemberRole) =>
+  (
+    req: AuthenticatedRequest,
+    _res: Response,
+    next: NextFunction,
+  ): void => {
+    if (!req.principal) {
+      next(new AppError(401, "AUTHENTICATION_REQUIRED", "需要登录后访问。"));
+      return;
+    }
+    const tenantId = String(
+      req.params.tenantId ?? req.body?.tenantId ?? req.query.tenantId ?? "",
+    );
+    if (!tenantId) {
+      next(
+        new AppError(
+          400,
+          "TENANT_CONTEXT_REQUIRED",
+          "请求缺少租户上下文。",
+        ),
+      );
+      return;
+    }
+    req.auditTenantId = tenantId;
+    next();
+  };
+
 async function readableTenant(
-  req: Parameters<typeof auditContext>[0],
+  _req: Parameters<typeof auditContext>[0],
   tenantId: string | undefined,
 ): Promise<string | undefined> {
-  if (req.principal?.platformRole === "platform_admin") return tenantId;
-  if (!tenantId)
-    throw new AppError(
-      400,
-      "TENANT_CONTEXT_REQUIRED",
-      "非平台管理员必须指定 tenantId。",
-    );
-  const role = await tenantRoleForUser(tenantId, req.principal!.id);
-  assertTenantAccess(req.principal!, role, "viewer");
   return tenantId;
 }
 
 async function assertAlertAccess(
-  req: Parameters<typeof auditContext>[0],
-  tenantId: string | undefined,
-  minimum: "viewer" | "developer" | "tenant_admin",
+  _req: Parameters<typeof auditContext>[0],
+  _tenantId: string | undefined,
+  _minimum: "viewer" | "developer" | "tenant_admin",
 ): Promise<void> {
-  if (req.principal?.platformRole === "platform_admin") return;
-  if (!tenantId)
-    throw new AppError(
-      403,
-      "PLATFORM_ALERT_ADMIN_REQUIRED",
-      "平台级告警仅平台管理员可访问。",
-    );
-  const role = await tenantRoleForUser(tenantId, req.principal!.id);
-  assertTenantAccess(req.principal!, role, minimum);
+  // Role metadata is retained for audit, not as a console access boundary.
 }
 
 async function agentPermission(
-  req: Parameters<typeof auditContext>[0],
+  _req: Parameters<typeof auditContext>[0],
   slug: string,
-  minimum: "viewer" | "developer" | "tenant_admin",
+  _minimum: "viewer" | "developer" | "tenant_admin",
 ) {
   const agent = await getAgentBySlug(slug);
   if (!agent) throw new NotFoundError("Agent", slug);
-  if (req.principal?.platformRole === "platform_admin") return agent;
-  if (!agent.tenantId)
-    throw new AppError(
-      403,
-      "AGENT_TENANT_REQUIRED",
-      "该 Agent 尚未分配租户，仅平台管理员可管理。",
-    );
-  const role = await tenantRoleForUser(agent.tenantId, req.principal!.id);
-  assertTenantAccess(req.principal!, role, minimum);
   return agent;
 }
 
 /** Permission check for an authenticated Studio session calling an A2A agent. */
 async function studioAgentPermission(
-  req: Parameters<typeof auditContext>[0],
+  _req: Parameters<typeof auditContext>[0],
   tenantId: string,
   slug: string,
 ) {
   const agent = await getAgentBySlug(slug);
   if (!agent) throw new NotFoundError("Agent", slug);
-  if (req.principal?.platformRole !== "platform_admin") {
-    const role = await tenantRoleForUser(tenantId, req.principal!.id);
-    assertTenantAccess(req.principal!, role, "developer");
-  }
   if (
     agent.tenantId !== tenantId &&
     agent.visibility !== "public" &&
@@ -236,17 +249,16 @@ async function studioAgentPermission(
 router.get(
   "/session",
   asyncHandler(async (req, res) => {
-    const tenants =
-      req.principal?.platformRole === "platform_admin"
-        ? []
-        : await listTenantsForUser(req.principal!.id);
+    const tenants = (await searchTenants({ page: 1, pageSize: 100 })).items;
     res.json({ principal: req.principal, tenants });
   }),
 );
 router.get(
   "/me/tenants",
   asyncHandler(async (req, res) => {
-    res.json({ tenants: await listTenantsForUser(req.principal!.id) });
+    res.json({
+      tenants: (await searchTenants({ page: 1, pageSize: 100 })).items,
+    });
   }),
 );
 
@@ -705,17 +717,7 @@ router.post(
 router.get(
   "/agents",
   asyncHandler(async (req, res) => {
-    let tenantId = optionalQuery(req, "tenantId");
-    if (req.principal?.platformRole !== "platform_admin") {
-      if (!tenantId)
-        throw new AppError(
-          400,
-          "TENANT_CONTEXT_REQUIRED",
-          "非平台管理员查询 Agent 时必须指定 tenantId。",
-        );
-      const role = await tenantRoleForUser(tenantId, req.principal!.id);
-      assertTenantAccess(req.principal!, role, "viewer");
-    }
+    const tenantId = optionalQuery(req, "tenantId");
     res.json({
       agents: await listAgents({
         status: optionalQuery(req, "status"),
@@ -740,23 +742,6 @@ router.post(
         maxConcurrent: 20,
       },
     });
-    if (req.principal?.platformRole !== "platform_admin") {
-      if (!input.tenantId)
-        throw new AppError(
-          400,
-          "TENANT_CONTEXT_REQUIRED",
-          "注册 Agent 必须指定 tenantId。",
-        );
-      const role = await tenantRoleForUser(input.tenantId, req.principal!.id);
-      assertTenantAccess(req.principal!, role, "developer");
-      if (input.visibility === "public" || input.allowedTenantIds.length) {
-        throw new AppError(
-          403,
-          "AGENT_VISIBILITY_ADMIN_REQUIRED",
-          "公开 Agent 或授权其他租户只能由平台管理员配置。",
-        );
-      }
-    }
     if (await getAgentBySlug(input.slug))
       throw new AppError(409, "AGENT_SLUG_EXISTS", "Agent slug 已被使用。");
     const validated = await validateRemoteAgent(input.cardUrl);
@@ -781,25 +766,6 @@ router.patch(
   asyncHandler(async (req, res) => {
     const agent = await agentPermission(req, id(req, "slug"), "developer");
     const input = updateAgentSchema.parse(req.body);
-    if (req.principal?.platformRole !== "platform_admin") {
-      if (input.tenantId !== undefined && input.tenantId !== agent.tenantId) {
-        throw new AppError(
-          403,
-          "AGENT_TENANT_TRANSFER_DENIED",
-          "租户成员不能把 Agent 转移到其他租户。",
-        );
-      }
-      if (
-        input.visibility === "public" ||
-        input.allowedTenantIds !== undefined
-      ) {
-        throw new AppError(
-          403,
-          "AGENT_VISIBILITY_ADMIN_REQUIRED",
-          "公开 Agent 或跨租户授权只能由平台管理员配置。",
-        );
-      }
-    }
     const updated = await updateAgent(agent.id, input);
     await writeAudit(
       auditContext(req, agent.tenantId),
@@ -999,17 +965,6 @@ router.post(
 router.get(
   "/tasks",
   asyncHandler(async (req, res) => {
-    if (req.principal?.platformRole !== "platform_admin") {
-      const tenantId = optionalQuery(req, "tenantId");
-      if (!tenantId)
-        throw new AppError(
-          400,
-          "TENANT_CONTEXT_REQUIRED",
-          "必须指定 tenantId。",
-        );
-      const role = await tenantRoleForUser(tenantId, req.principal!.id);
-      assertTenantAccess(req.principal!, role, "viewer");
-    }
     res.json(await searchTasks(req.query));
   }),
 );
@@ -1408,51 +1363,18 @@ router.get(
 router.get(
   "/usage",
   asyncHandler(async (req, res) => {
-    const tenantId = optionalQuery(req, "tenantId");
-    if (req.principal?.platformRole !== "platform_admin") {
-      if (!tenantId)
-        throw new AppError(
-          400,
-          "TENANT_CONTEXT_REQUIRED",
-          "必须指定 tenantId。",
-        );
-      const role = await tenantRoleForUser(tenantId, req.principal!.id);
-      assertTenantAccess(req.principal!, role, "viewer");
-    }
     res.json(await searchUsage(req.query));
   }),
 );
 router.get(
   "/usage/summary",
   asyncHandler(async (req, res) => {
-    const tenantId = optionalQuery(req, "tenantId");
-    if (req.principal?.platformRole !== "platform_admin") {
-      if (!tenantId)
-        throw new AppError(
-          400,
-          "TENANT_CONTEXT_REQUIRED",
-          "必须指定 tenantId。",
-        );
-      const role = await tenantRoleForUser(tenantId, req.principal!.id);
-      assertTenantAccess(req.principal!, role, "viewer");
-    }
     res.json({ summary: await usageSummary(req.query) });
   }),
 );
 router.get(
   "/usage/export.csv",
   asyncHandler(async (req, res) => {
-    const tenantId = optionalQuery(req, "tenantId");
-    if (req.principal?.platformRole !== "platform_admin") {
-      if (!tenantId)
-        throw new AppError(
-          400,
-          "TENANT_CONTEXT_REQUIRED",
-          "必须指定 tenantId。",
-        );
-      const role = await tenantRoleForUser(tenantId, req.principal!.id);
-      assertTenantAccess(req.principal!, role, "viewer");
-    }
     res
       .type("text/csv")
       .attachment(`usage-${new Date().toISOString().slice(0, 10)}.csv`)
@@ -1723,17 +1645,6 @@ router.get(
 router.post(
   "/alerts/rules",
   asyncHandler(async (req, res) => {
-    const tenantId = req.body?.tenantId as string | undefined;
-    if (req.principal?.platformRole !== "platform_admin") {
-      if (!tenantId)
-        throw new AppError(
-          400,
-          "TENANT_CONTEXT_REQUIRED",
-          "必须指定 tenantId。",
-        );
-      const role = await tenantRoleForUser(tenantId, req.principal!.id);
-      assertTenantAccess(req.principal!, role, "tenant_admin");
-    }
     const rule = await createAlertRule(req.body, actor(req));
     await writeAudit(auditContext(req, rule.tenantId), "alert_rule.created", {
       type: "alert_rule",

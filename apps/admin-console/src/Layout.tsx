@@ -1,5 +1,13 @@
-import type { ReactNode } from "react";
-import { Avatar, Badge, Button, Select, Tooltip, Typography } from "antd";
+import { useState, type ReactNode } from "react";
+import {
+  Avatar,
+  Badge,
+  Button,
+  Drawer,
+  Select,
+  Tooltip,
+  Typography,
+} from "antd";
 import {
   AlertOutlined,
   ApiOutlined,
@@ -9,6 +17,7 @@ import {
   BellOutlined,
   BugOutlined,
   LogoutOutlined,
+  MoreOutlined,
   PlusOutlined,
   RobotOutlined,
   SettingOutlined,
@@ -30,6 +39,7 @@ export type PageKey =
   | "alerts"
   | "audit"
   | "settings";
+
 const navigation: Array<{
   key: PageKey;
   label: string;
@@ -88,10 +98,18 @@ const navigation: Array<{
     group: "govern",
   },
 ];
+
+const mobilePrimaryKeys: PageKey[] = [
+  "overview",
+  "agents",
+  "debug",
+  "tasks",
+];
+
 const titles: Record<PageKey, { title: string; description: string }> = {
   overview: { title: "运行概览", description: "平台代理服务与治理状态" },
   tenants: { title: "租户管理", description: "客户空间、状态与配额" },
-  members: { title: "成员与角色", description: "邀请、角色和访问边界" },
+  members: { title: "成员与角色", description: "邀请、账号状态和审计标签" },
   agents: { title: "Agent 管理", description: "注册、Card、健康与调用策略" },
   debug: {
     title: "在线调试",
@@ -101,7 +119,7 @@ const titles: Record<PageKey, { title: string; description: string }> = {
   usage: { title: "用量分析", description: "调用趋势、失败率与延迟" },
   webhooks: { title: "Webhook", description: "事件订阅、签名与投递记录" },
   alerts: { title: "告警中心", description: "规则、触发、确认和静默" },
-  audit: { title: "审计中心", description: "治理操作与权限变更记录" },
+  audit: { title: "审计中心", description: "治理操作与角色标签变更记录" },
   settings: { title: "平台设置", description: "网关、健康检查与投递参数" },
 };
 
@@ -121,22 +139,48 @@ export function Layout({
   const {
     user,
     selectedRole,
-    canWrite,
     tenants,
     selectedTenantId,
     setSelectedTenantId,
     logout,
   } = useApp();
-  const title =
-    page === "agents" && !canWrite
-      ? { title: "Agent 目录", description: "你当前有权查看的 Agent 服务" }
-      : titles[page];
-  const visibleNavigation = navigation.filter((item) => {
-    if (user.platformRole === "platform_admin") return true;
-    if (item.key === "settings") return false;
-    if (!selectedTenantId && item.key !== "agents") return false;
-    return true;
-  });
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const title = titles[page];
+  const mobilePrimary = navigation.filter((item) =>
+    mobilePrimaryKeys.includes(item.key),
+  );
+  const mobileSecondary = navigation.filter(
+    (item) => !mobilePrimaryKeys.includes(item.key),
+  );
+  const mobileSecondaryActive = mobileSecondary.some(
+    (item) => item.key === page,
+  );
+  const accountRoleLabel =
+    user.platformRole === "platform_admin"
+      ? "平台管理员标签"
+      : selectedRole === "tenant_admin"
+        ? "租户管理员标签"
+        : selectedRole === "developer"
+          ? "开发者标签"
+          : selectedRole === "viewer"
+            ? "只读成员标签"
+            : "已登录";
+  const tenantOptions = [
+    { value: "", label: "全部租户" },
+    ...tenants.map((tenant) => ({
+      value: tenant.id,
+      label: tenant.displayName,
+    })),
+  ];
+  const openRegister = () => {
+    setMobileMoreOpen(false);
+    onRegister();
+  };
+  const navigateFromMore = (next: PageKey) => {
+    setMobileMoreOpen(false);
+    onPage(next);
+  };
+
   return (
     <div
       className={`${styles.shell} ${page === "debug" ? styles.debugShell : ""}`}
@@ -148,22 +192,20 @@ export function Layout({
             A2A Hub<small>AGENT OPERATIONS</small>
           </span>
         </div>
-        {canWrite && (
-          <Button
-            type="text"
-            block
-            icon={<PlusOutlined />}
-            className={styles.sidebarPrimary}
-            onClick={onRegister}
-          >
-            注册 Agent
-          </Button>
-        )}
-        <nav>
+        <Button
+          type="text"
+          block
+          icon={<PlusOutlined />}
+          className={styles.sidebarPrimary}
+          onClick={onRegister}
+        >
+          注册 Agent
+        </Button>
+        <nav aria-label="控制台主导航">
           {(["operate", "govern"] as const).map((group) => (
             <div className={styles.navGroup} key={group}>
               <span>{group === "operate" ? "运营" : "治理"}</span>
-              {visibleNavigation
+              {navigation
                 .filter((item) => item.group === group)
                 .map((item) => (
                   <Button
@@ -171,57 +213,36 @@ export function Layout({
                     block
                     icon={item.icon}
                     key={item.key}
-                    aria-label={
-                      item.key === "agents" && !canWrite
-                        ? "Agent 目录"
-                        : item.label
-                    }
+                    aria-current={page === item.key ? "page" : undefined}
                     className={page === item.key ? styles.navActive : ""}
                     onMouseEnter={() => onWarmPage(item.key)}
                     onFocus={() => onWarmPage(item.key)}
                     onPointerDown={() => onWarmPage(item.key)}
                     onClick={() => onPage(item.key)}
                   >
-                    {item.key === "agents" && !canWrite
-                      ? "Agent 目录"
-                      : item.label}
+                    {item.label}
                   </Button>
                 ))}
             </div>
           ))}
         </nav>
         <div className={styles.sidebarFooter}>
-          {user.platformRole === "platform_admin" || tenants.length ? (
-            <div className={styles.tenantSelector}>
-              <Typography.Text type="secondary">当前租户</Typography.Text>
-              <Select
-                size="small"
-                value={selectedTenantId}
-                options={[
-                  ...(user.platformRole === "platform_admin"
-                    ? [{ value: "", label: "全部租户" }]
-                    : []),
-                  ...tenants.map((tenant) => ({
-                    value: tenant.id,
-                    label: tenant.displayName,
-                  })),
-                ]}
-                onChange={setSelectedTenantId}
-              />
-            </div>
-          ) : (
-            <div className={styles.catalogScope}>
-              <span>当前权限</span>
-              <b>公开 Agent 目录</b>
-            </div>
-          )}
+          <div className={styles.tenantSelector}>
+            <Typography.Text type="secondary">当前租户</Typography.Text>
+            <Select
+              size="small"
+              value={selectedTenantId}
+              options={tenantOptions}
+              onChange={setSelectedTenantId}
+            />
+          </div>
           <div className={styles.account}>
             <Avatar size={29}>
               {user.displayName.slice(0, 1).toUpperCase()}
             </Avatar>
             <span>
               {user.displayName}
-              <small>{user.platformRole ?? selectedRole ?? "未选择租户"}</small>
+              <small>{accountRoleLabel} · 全部功能可用</small>
             </span>
             <Tooltip title="退出登录">
               <Button
@@ -245,43 +266,106 @@ export function Layout({
           </div>
           <div className={styles.topbarActions}>
             <Badge status="success" text="平台服务正常" />
-            {user.platformRole === "platform_admin" && (
-              <Tooltip title="打开平台设置与运行信息">
-                <Button
-                  aria-label="快速进入平台设置"
-                  icon={<SettingOutlined />}
-                  onMouseEnter={() => onWarmPage("settings")}
-                  onFocus={() => onWarmPage("settings")}
-                  onClick={() => onPage("settings")}
-                />
-              </Tooltip>
-            )}
+            <Tooltip title="打开平台设置与运行信息">
+              <Button
+                aria-label="快速进入平台设置"
+                icon={<SettingOutlined />}
+                onMouseEnter={() => onWarmPage("settings")}
+                onFocus={() => onWarmPage("settings")}
+                onClick={() => onPage("settings")}
+              />
+            </Tooltip>
           </div>
         </header>
         <div className={styles.pageBody}>{children}</div>
       </main>
-      <nav className={styles.mobileNav}>
-        {visibleNavigation.map((item) => (
+      <nav className={styles.mobileNav} aria-label="移动端主导航">
+        {mobilePrimary.map((item) => (
           <Button
             type="text"
             key={item.key}
-            aria-label={
-              item.key === "agents" && !canWrite ? "Agent 目录" : item.label
-            }
+            aria-label={item.label}
+            aria-current={page === item.key ? "page" : undefined}
             className={page === item.key ? styles.mobileActive : ""}
             onPointerDown={() => onWarmPage(item.key)}
             onFocus={() => onWarmPage(item.key)}
             onClick={() => onPage(item.key)}
           >
             {item.icon}
-            <span>
-              {(item.key === "agents" && !canWrite ? "Agent 目录" : item.label)
-                .replace("管理", "")
-                .replace("中心", "")}
-            </span>
+            <span>{item.label.replace("管理", "").replace("中心", "")}</span>
           </Button>
         ))}
+        <Button
+          type="text"
+          aria-label="更多功能"
+          aria-current={mobileSecondaryActive ? "page" : undefined}
+          aria-expanded={mobileMoreOpen}
+          aria-haspopup="dialog"
+          className={mobileSecondaryActive ? styles.mobileActive : ""}
+          onClick={() => setMobileMoreOpen(true)}
+        >
+          <MoreOutlined />
+          <span>更多</span>
+        </Button>
       </nav>
+      <Drawer
+        title="更多功能"
+        placement="bottom"
+        open={mobileMoreOpen}
+        onClose={() => setMobileMoreOpen(false)}
+        rootClassName={styles.mobileMoreDrawer}
+        height="min(78dvh, 620px)"
+      >
+        <div className={styles.mobileMoreContent}>
+          <div className={styles.mobileMoreGroup}>
+            <span className={styles.mobileMoreLabel}>治理与分析</span>
+            {mobileSecondary.map((item) => (
+              <Button
+                type="text"
+                key={item.key}
+                icon={item.icon}
+                aria-current={page === item.key ? "page" : undefined}
+                className={page === item.key ? styles.mobileMoreActive : ""}
+                onClick={() => navigateFromMore(item.key)}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+          <div className={styles.mobileMoreGroup}>
+            <span className={styles.mobileMoreLabel}>当前工作范围</span>
+            <Select
+              value={selectedTenantId}
+              options={tenantOptions}
+              onChange={setSelectedTenantId}
+              aria-label="切换当前租户"
+            />
+          </div>
+          <div className={styles.mobileMoreGroup}>
+            <span className={styles.mobileMoreLabel}>账户与操作</span>
+            <Button type="text" icon={<PlusOutlined />} onClick={openRegister}>
+              注册 Agent
+            </Button>
+            <div className={styles.mobileMoreAccount}>
+              <Avatar size={32}>
+                {user.displayName.slice(0, 1).toUpperCase()}
+              </Avatar>
+              <span>
+                {user.displayName}
+                <small>{user.email}</small>
+              </span>
+            </div>
+            <Button
+              type="text"
+              danger
+              icon={<LogoutOutlined />}
+              onClick={() => void logout()}
+            >
+              退出登录
+            </Button>
+          </div>
+        </div>
+      </Drawer>
     </div>
   );
 }

@@ -53,7 +53,6 @@ const isCatalogAgent = (agent: Agent): agent is CatalogAgent =>
 export function AgentsPage({ openRegister }: { openRegister: () => void }) {
   const {
     token,
-    user,
     agents,
     agentPage,
     refreshAgents,
@@ -64,7 +63,6 @@ export function AgentsPage({ openRegister }: { openRegister: () => void }) {
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const catalogMode = user.platformRole !== "platform_admin";
   const [selected, setSelected] = useState<Agent>();
   const [confirm, setConfirm] = useState<{
     agent: Agent;
@@ -72,17 +70,13 @@ export function AgentsPage({ openRegister }: { openRegister: () => void }) {
   }>();
   const edit = useDisclosure();
   const toast = useToast();
-  const selectedManageable = Boolean(
-    canWrite && selected && (!isCatalogAgent(selected) || selected.manageable),
-  );
-  const selectedAdministrable = Boolean(
-    canAdminister &&
-    selected &&
-    (!isCatalogAgent(selected) || selected.administrable),
-  );
+  const selectedManageable = Boolean(canWrite && selected);
+  const selectedAdministrable = Boolean(canAdminister && selected);
+  // All authenticated console users use the same complete, paginated Agent collection.
+  const serverFilteredList = true;
   const visible = useMemo(
     () =>
-      catalogMode
+      serverFilteredList
         ? agents
         : agents.filter(
             (agent) =>
@@ -91,10 +85,10 @@ export function AgentsPage({ openRegister }: { openRegister: () => void }) {
                 .toLowerCase()
                 .includes(search.toLowerCase()),
           ),
-    [agents, status, search, catalogMode],
+    [agents, status, search, serverFilteredList],
   );
   useEffect(() => {
-    if (!catalogMode) return;
+    if (!serverFilteredList) return;
     const timer = window.setTimeout(
       () =>
         void refreshAgents({
@@ -106,7 +100,7 @@ export function AgentsPage({ openRegister }: { openRegister: () => void }) {
       250,
     );
     return () => window.clearTimeout(timer);
-  }, [catalogMode, page, refreshAgents, search, status]);
+  }, [serverFilteredList, page, refreshAgents, search, status]);
   useEffect(() => {
     if (!selected && agents.length) setSelected(agents[0]);
     else if (selected)
@@ -205,7 +199,7 @@ export function AgentsPage({ openRegister }: { openRegister: () => void }) {
               ))}
             </div>
           </PageState>
-          {catalogMode && (
+          {serverFilteredList && (
             <Pagination
               page={agentPage.page}
               totalPages={agentPage.totalPages}

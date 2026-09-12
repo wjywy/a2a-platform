@@ -61,11 +61,8 @@ export function MembersPage() {
     [token, tenantId, canAdminister],
   );
   const users = useAsync(
-    () =>
-      user.platformRole === "platform_admin"
-        ? platformApi.users(token)
-        : Promise.resolve([] as PlatformUser[]),
-    [token, user.platformRole],
+    () => platformApi.users(token),
+    [token],
   );
   const [remove, setRemove] = useState<TenantMember>();
   const [platformRoleChange, setPlatformRoleChange] = useState<PlatformUser>();
@@ -100,7 +97,7 @@ export function MembersPage() {
       <section className={styles.panel}>
         <SectionHeader
           title="成员与角色"
-          description="平台管理员、租户管理员、开发者和只读成员拥有不同权限"
+          description="所有已登录且启用的成员均可访问控制台功能；角色仅作为审计标签保留"
           actions={
             <>
               <Select
@@ -128,15 +125,15 @@ export function MembersPage() {
         <div className={styles.roleLegend}>
           <div>
             <b>租户管理员</b>
-            <span>成员、Key、配额和全部租户资源</span>
+            <span>审计标签，不限制控制台功能</span>
           </div>
           <div>
             <b>开发者</b>
-            <span>Agent、调试、Webhook 和任务</span>
+            <span>审计标签，不限制控制台功能</span>
           </div>
           <div>
             <b>只读成员</b>
-            <span>查看运行状态、用量和审计</span>
+            <span>审计标签，不限制控制台功能</span>
           </div>
         </div>
         <PageState
@@ -284,11 +281,11 @@ export function MembersPage() {
           </PageState>
         </section>
       )}
-      {user.platformRole === "platform_admin" && (
+      {
         <section className={styles.panel}>
           <SectionHeader
             title="平台用户"
-            description="可为已有登录用户授予或撤销平台管理员权限"
+            description="可维护登录用户；平台角色标签仅用于审计，不限制控制台访问"
             actions={
               <Button
                 type="primary"
@@ -355,8 +352,8 @@ export function MembersPage() {
                         onClick={() => setPlatformRoleChange(item)}
                       >
                         {item.platformRole === "platform_admin"
-                          ? "撤销管理员"
-                          : "设为管理员"}
+                          ? "撤销管理员标签"
+                          : "设为管理员标签"}
                       </Button>
                       <Button
                         size="small"
@@ -373,7 +370,7 @@ export function MembersPage() {
             />
           </PageState>
         </section>
-      )}
+      }
       {invite.open && (
         <InviteForm
           tenantId={tenantId}
@@ -397,19 +394,19 @@ export function MembersPage() {
         <ConfirmDialog
           title={
             platformRoleChange.platformRole === "platform_admin"
-              ? "撤销平台管理员"
-              : "设为平台管理员"
+              ? "撤销平台管理员标签"
+              : "设为平台管理员标签"
           }
           danger={platformRoleChange.platformRole === "platform_admin"}
           confirmText={
             platformRoleChange.platformRole === "platform_admin"
-              ? "确认撤销"
-              : "确认授予"
+              ? "确认撤销标签"
+              : "确认授予标签"
           }
           message={
             platformRoleChange.platformRole === "platform_admin"
-              ? `确认撤销“${platformRoleChange.displayName || platformRoleChange.email}”的平台管理员权限？下一次请求将不再拥有平台权限，且其会话刷新凭据会被撤销。`
-              : `确认将“${platformRoleChange.displayName || platformRoleChange.email}”设为平台管理员？权限会在下一次请求生效，重新进入控制台后即可看到平台管理菜单。`
+              ? `确认撤销“${platformRoleChange.displayName || platformRoleChange.email}”的平台管理员标签？控制台访问不会受影响。`
+              : `确认将“${platformRoleChange.displayName || platformRoleChange.email}”设为平台管理员标签？控制台访问不会受影响。`
           }
           onClose={() => setPlatformRoleChange(undefined)}
           onConfirm={async () => {
@@ -420,7 +417,7 @@ export function MembersPage() {
               platformRoleChange.id,
               granting ? "platform_admin" : null,
             );
-            toast.success(granting ? "已授予平台管理员权限" : "已撤销平台管理员权限");
+            toast.success(granting ? "已授予平台管理员标签" : "已撤销平台管理员标签");
             await users.refresh();
           }}
         />

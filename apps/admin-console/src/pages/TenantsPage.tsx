@@ -44,35 +44,21 @@ const defaults = {
   warningThresholdPercent: 80,
 };
 export function TenantsPage() {
-  const { token, user, tenants, canAdminister, refreshTenants } = useApp();
+  const { token, canAdminister, refreshTenants } = useApp();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const query = useDebouncedValue(search);
-  const state = useAsync(async () => {
-    if (user.platformRole === "platform_admin")
-      return platformApi.tenants(token, {
+  const state = useAsync(
+    () =>
+      platformApi.tenants(token, {
         page,
         pageSize: 12,
         search: query,
         status,
-      });
-    const filtered = tenants.filter(
-      (tenant) =>
-        (!status || tenant.status === status) &&
-        `${tenant.displayName} ${tenant.slug}`
-          .toLowerCase()
-          .includes(query.toLowerCase()),
-    );
-    const pageSize = 12;
-    return {
-      items: filtered.slice((page - 1) * pageSize, page * pageSize),
-      page,
-      pageSize,
-      total: filtered.length,
-      totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
-    };
-  }, [token, user.platformRole, tenants, page, query, status]);
+      }),
+    [token, page, query, status],
+  );
   const modal = useDisclosure();
   const [edit, setEdit] = useState<Tenant>();
   const [confirm, setConfirm] = useState<{
@@ -91,18 +77,16 @@ export function TenantsPage() {
           title="租户列表"
           description="每个租户拥有独立 Agent、密钥、配额和调用记录"
           actions={
-            user.platformRole === "platform_admin" ? (
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  setEdit(undefined);
-                  modal.show();
-                }}
-              >
-                创建租户
-              </Button>
-            ) : undefined
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEdit(undefined);
+                modal.show();
+              }}
+            >
+              创建租户
+            </Button>
           }
         />
         <div className={styles.toolbar}>
@@ -202,32 +186,26 @@ export function TenantsPage() {
                         编辑
                       </Button>
                     )}
-                    {user.platformRole === "platform_admin" && (
-                      <Button
-                        size="small"
-                        onClick={() =>
-                          setConfirm({
-                            tenant,
-                            action:
-                              tenant.status === "active"
-                                ? "suspend"
-                                : "activate",
-                          })
-                        }
-                      >
-                        {tenant.status === "active" ? "停用" : "启用"}
-                      </Button>
-                    )}
-                    {user.platformRole === "platform_admin" && (
-                      <Button
-                        size="small"
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={() => setConfirm({ tenant, action: "delete" })}
-                      >
-                        删除
-                      </Button>
-                    )}
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        setConfirm({
+                          tenant,
+                          action:
+                            tenant.status === "active" ? "suspend" : "activate",
+                        })
+                      }
+                    >
+                      {tenant.status === "active" ? "停用" : "启用"}
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => setConfirm({ tenant, action: "delete" })}
+                    >
+                      删除
+                    </Button>
                   </Space>
                 ),
               },
