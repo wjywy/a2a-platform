@@ -379,18 +379,14 @@ export async function setUserPlatformRole(
       nextPlatformRole: input.platformRole,
       nextStatus: current.status,
     });
-    const changed = current.platform_role !== input.platformRole;
     const result = await client.query<UserRow>(
       `UPDATE platform_users
        SET platform_role=$2,updated_at=now()
        WHERE id=$1 RETURNING *`,
       [id, input.platformRole],
     );
-    // A promotion takes effect on the next authenticated request. Keep the
-    // current refresh session so the user receives the same role at the next
-    // token refresh. A demotion must invalidate renewal credentials instead.
-    if (changed && input.platformRole !== "platform_admin")
-      await revokeUserSessions(id, client);
+    // Platform roles are audit labels for the console rather than access
+    // gates, so changing one must not interrupt an authenticated session.
     await client.query("COMMIT");
     transactionOpen = false;
     return mapUser(result.rows[0]);

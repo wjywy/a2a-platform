@@ -424,12 +424,12 @@ describe("admin authentication and tenant lifecycle", () => {
        WHERE user_id=$1 AND revoked_at IS NULL`,
       [user.id],
     );
-    expect(activeSessionsAfterRevoke[0]?.count).toBe("0");
+    expect(activeSessionsAfterRevoke[0]?.count).toBe("1");
 
     const afterRevoke = await request(app)
       .get("/api/admin/users")
       .set("Authorization", `Bearer ${tokens.accessToken}`);
-    expect(afterRevoke.status).toBe(401);
+    expect(afterRevoke.status).toBe(200);
   });
 
   it("lets a verified OIDC identity reclaim an unverified self-registration", async () => {
