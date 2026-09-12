@@ -588,7 +588,7 @@
       transparent
     );
     border-top: 1px solid var(--color-border-faint);
-    backdrop-filter: blur(14px);
+    backdrop-filter: none;
     scrollbar-width: none;
   }
 
@@ -810,5 +810,80 @@
 
   .mobileNav :global(.ant-btn:active) {
     transform: scale(0.96);
+  }
+}
+
+/* Light console refinement: navigation groups frame work without turning the
+   console into a card wall. */
+.sidebar {
+  border-right-color: var(--color-border-faint);
+}
+
+.navGroup {
+  margin-bottom: 14px;
+}
+
+.navGroup > span {
+  padding-top: 8px;
+  letter-spacing: 0.06em;
+}
+
+.topbar {
+  padding-block: 14px;
+}
+
+.pageBody {
+  padding-top: 28px;
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    background: var(--color-surface-canvas);
+  }
+
+  .topbar {
+    padding-block: 12px;
+  }
+
+  .pageBody {
+    padding-top: 16px;
+  }
+
+  .mobileNav {
+    background: var(--color-surface-canvas);
+    border-top-color: var(--color-border-subtle);
+    box-shadow: 0 -1px 0 rgb(31 31 28 / 3%);
+    backdrop-filter: none;
+  }
+
+  .mobileNav :global(.ant-btn) {
+    grid-template-rows: 20px 14px;
+    min-width: 44px;
+  }
+
+  .mobileNav :global(.ant-btn > span:last-child) {
+    font-size: 9px;
+    line-height: 14px;
+  }
+
+  .mobileMoreDrawer :global(.ant-drawer-content) {
+    background: var(--color-surface-raised);
+  }
+
+  .mobileMoreContent {
+    gap: 20px;
+  }
+
+  .mobileMoreGroup :global(.ant-btn) {
+    min-height: var(--control-height-touch);
+    border-radius: var(--radius-md);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .sidebarPrimary:global(.ant-btn-text):not(:disabled):hover,
+  .navGroup :global(.ant-btn-text:not(:disabled):not(.navActive):hover),
+  .account :global(.ant-btn-text:not(:disabled):hover) {
+    color: var(--color-text-primary) !important;
+    background: var(--color-sidebar-hover) !important;
   }
 }

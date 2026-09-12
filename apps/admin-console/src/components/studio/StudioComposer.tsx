@@ -130,7 +130,7 @@ export function StudioComposer() {
       </form>
 
       <p className={styles.composerHint}>
-        Enter 发送 · Shift + Enter 换行 · Esc 停止
+        Enter 发送 · Shift + Enter 换行 · 输入法候选时不会发送 · Esc 停止
       </p>
     </div>
   );

@@ -93,7 +93,7 @@ export function PageState({
 }) {
   if (loading)
     return (
-      <Flex className={styles.antStatePanel} vertical align="center" gap={8}>
+      <Flex className={styles.antStatePanel} vertical align="center" gap={8} role="status" aria-live="polite">
         <Spin indicator={<LoadingOutlined spin />} size="large" />
         <Typography.Text strong>正在加载数据</Typography.Text>
         <Typography.Text type="secondary">
@@ -103,8 +103,9 @@ export function PageState({
     );
   if (error)
     return (
-      <Result
-        status="error"
+      <div role="alert">
+        <Result
+          status="error"
         title="加载失败"
         subTitle={error}
         extra={
@@ -114,11 +115,13 @@ export function PageState({
             </Button>
           ) : undefined
         }
-      />
+        />
+      </div>
     );
   if (empty)
     return (
-      <Empty
+      <div role="status">
+        <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
         description={
           <Space direction="vertical" size={2}>
@@ -128,7 +131,8 @@ export function PageState({
             </Typography.Text>
           </Space>
         }
-      />
+        />
+      </div>
     );
   return <>{children}</>;
 }
@@ -191,7 +195,7 @@ export function StatusBadge({ value }: { value: string }) {
     icon: <InfoCircleFilled />,
   };
   return (
-    <Tag bordered={false} color={item.color} icon={item.icon}>
+    <Tag bordered={false} color={item.color} icon={item.icon} role="status">
       {item.label}
     </Tag>
   );

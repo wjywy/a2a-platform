@@ -18,6 +18,8 @@ const adminHeaders = {
   "Content-Type": "application/json",
 };
 const testApiBaseUrl = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:8080";
+const testPlatformOrigin =
+  process.env.E2E_PLATFORM_ORIGIN ?? "http://localhost:8080";
 
 test("self-registered customer can sign up, use the full console, and log in again", async ({
   page,
@@ -39,13 +41,13 @@ test("self-registered customer can sign up, use the full console, and log in aga
     | undefined;
   try {
     const agentResponse = await request.get(
-      "http://127.0.0.1:8080/api/admin/agents/stock-expert",
+      `${testApiBaseUrl}/api/admin/agents/stock-expert`,
       { headers: adminHeaders },
     );
     expect(agentResponse.ok()).toBeTruthy();
     originalAgent = (await agentResponse.json()).agent;
     const publishResponse = await request.patch(
-      "http://127.0.0.1:8080/api/admin/agents/stock-expert",
+      `${testApiBaseUrl}/api/admin/agents/stock-expert`,
       {
         headers: adminHeaders,
         data: { visibility: "public" },
@@ -73,7 +75,7 @@ test("self-registered customer can sign up, use the full console, and log in aga
     await expect(
       page
         .getByTitle(
-          "http://localhost:8080/agents/stock-expert/.well-known/agent-card.json",
+          `${testPlatformOrigin}/agents/stock-expert/.well-known/agent-card.json`,
         )
         .last(),
     ).toBeVisible();
@@ -95,7 +97,7 @@ test("self-registered customer can sign up, use the full console, and log in aga
   } finally {
     if (originalAgent) {
       await request.patch(
-        "http://127.0.0.1:8080/api/admin/agents/stock-expert",
+        `${testApiBaseUrl}/api/admin/agents/stock-expert`,
         {
           headers: adminHeaders,
           data: {
@@ -106,7 +108,7 @@ test("self-registered customer can sign up, use the full console, and log in aga
       );
     }
     const usersResponse = await request.get(
-      "http://127.0.0.1:8080/api/admin/users",
+      `${testApiBaseUrl}/api/admin/users`,
       { headers: adminHeaders },
     );
     if (usersResponse.ok()) {
@@ -118,7 +120,7 @@ test("self-registered customer can sign up, use the full console, and log in aga
     }
     if (userId) {
       await request.post(
-        `http://127.0.0.1:8080/api/admin/users/${userId}/status`,
+        `${testApiBaseUrl}/api/admin/users/${userId}/status`,
         { headers: adminHeaders, data: { status: "disabled" } },
       );
     }
@@ -139,7 +141,7 @@ test("invited developer can activate an account and sees the full console", asyn
   let userId = "";
   try {
     const tenantResponse = await request.post(
-      "http://127.0.0.1:8080/api/admin/tenants",
+      `${testApiBaseUrl}/api/admin/tenants`,
       {
         headers: adminHeaders,
         data: {
@@ -153,7 +155,7 @@ test("invited developer can activate an account and sees the full console", asyn
     tenantId = (await tenantResponse.json()).tenant.id as string;
 
     const invitationResponse = await request.post(
-      `http://127.0.0.1:8080/api/admin/tenants/${tenantId}/members/invite`,
+      `${testApiBaseUrl}/api/admin/tenants/${tenantId}/members/invite`,
       {
         headers: adminHeaders,
         data: {
@@ -196,16 +198,16 @@ test("invited developer can activate an account and sees the full console", asyn
   } finally {
     if (tenantId) {
       await request.post(
-        `http://127.0.0.1:8080/api/admin/tenants/${tenantId}/status`,
+        `${testApiBaseUrl}/api/admin/tenants/${tenantId}/status`,
         { headers: adminHeaders, data: { status: "suspended" } },
       );
       await request.delete(
-        `http://127.0.0.1:8080/api/admin/tenants/${tenantId}`,
+        `${testApiBaseUrl}/api/admin/tenants/${tenantId}`,
         { headers: adminHeaders },
       );
     }
     const usersResponse = await request.get(
-      "http://127.0.0.1:8080/api/admin/users",
+      `${testApiBaseUrl}/api/admin/users`,
       { headers: adminHeaders },
     );
     if (usersResponse.ok()) {
@@ -217,7 +219,7 @@ test("invited developer can activate an account and sees the full console", asyn
     }
     if (userId) {
       await request.post(
-        `http://127.0.0.1:8080/api/admin/users/${userId}/status`,
+        `${testApiBaseUrl}/api/admin/users/${userId}/status`,
         { headers: adminHeaders, data: { status: "disabled" } },
       );
     }
@@ -255,7 +257,7 @@ test("all primary console pages are reachable and render real content", async ({
       await expect(
         page.getByRole("button", { name: "返回控制台" }),
       ).toBeVisible();
-      await expect(page.getByPlaceholder("给 Agent 发送消息…")).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "给 Agent 发送消息" })).toBeVisible();
       await page.goto("/overview");
       await expect(
         page.getByRole("heading", { name: "运行概览" }),
@@ -281,7 +283,7 @@ test("history routes support legacy links, direct refresh and browser back", asy
   await expect(page.getByRole("heading", { name: "Agent 列表" })).toBeVisible();
 
   await page.goto("/overview");
-  await page.getByRole("button", { name: "Agent 管理", exact: true }).click();
+  await page.getByRole("button", { name: /Agent 管理$/ }).click();
   await expect(page).toHaveURL(/\/agents$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/overview$/);
@@ -305,7 +307,7 @@ test("tenant and Agent data survive the platform upgrade", async ({
   await expect(
     page.getByRole("strong").filter({ hasText: "默认租户" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Agent 管理", exact: true }).click();
+  await page.getByRole("button", { name: /Agent 管理$/ }).click();
   await expect(page.getByText("股票专家").first()).toBeVisible();
   await expect(page.getByText("stock-expert").first()).toBeVisible();
 });
@@ -387,7 +389,7 @@ test("debug studio keeps its server-side configuration drawer after refresh", as
   await expect(drawer).toBeHidden();
   await page.reload();
   await expect(page.getByRole("button", { name: "返回控制台" })).toBeVisible();
-  await expect(page.getByPlaceholder("给 Agent 发送消息…")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "给 Agent 发送消息" })).toBeVisible();
 });
 
 test("desktop console keeps visited page state and avoids duplicate reloads", async ({
@@ -400,11 +402,11 @@ test("desktop console keeps visited page state and avoids duplicate reloads", as
   await page.goto("/overview");
   await expect(page.getByRole("heading", { name: "运行概览" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Agent 管理", exact: true }).click();
+  await page.getByRole("button", { name: /Agent 管理$/ }).click();
   await page.getByPlaceholder("名称、slug 或标签").fill("symbol-market");
   await page.getByRole("button", { name: "任务中心", exact: true }).click();
   await expect(page.getByRole("heading", { name: "任务中心" })).toBeVisible();
-  await page.getByRole("button", { name: "Agent 管理", exact: true }).click();
+  await page.getByRole("button", { name: /Agent 管理$/ }).click();
   await expect(page.getByPlaceholder("名称、slug 或标签")).toHaveValue(
     "symbol-market",
   );
@@ -482,15 +484,15 @@ test("Agent management hover states do not introduce dark or shifting borders", 
   await sidebarRegister.hover();
   await expect(sidebarRegister).toHaveCSS(
     "background-color",
-    "rgb(238, 238, 238)",
+    "rgb(229, 229, 223)",
   );
 
   const register = page
     .getByRole("main")
     .getByRole("button", { name: /注册 Agent/ });
-  await expect(register).toHaveCSS("background-color", "rgb(33, 33, 33)");
+  await expect(register).toHaveCSS("background-color", "rgb(41, 41, 37)");
   await register.hover();
-  await expect(register).toHaveCSS("background-color", "rgb(48, 48, 48)");
+  await expect(register).toHaveCSS("background-color", "rgb(58, 58, 53)");
 
   const readBorder = (locator: import("@playwright/test").Locator) =>
     locator.evaluate((element) => {
@@ -735,5 +737,57 @@ test("platform admin can assign an existing user as a platform administrator", a
         { headers: adminHeaders, data: { status: "disabled" } },
       );
     }
+  }
+});
+
+test("light workspace preserves its surface hierarchy and five-item mobile navigation", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/overview");
+  await expect(page.getByRole("heading", { name: "运行概览" })).toBeVisible();
+
+  const viewport = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: innerWidth,
+    bodyBackground: getComputedStyle(document.body).backgroundColor,
+  }));
+  expect(viewport.documentWidth).toBeLessThanOrEqual(viewport.viewportWidth + 1);
+  expect(viewport.bodyBackground).toBe("rgb(244, 244, 242)");
+
+  if (testInfo.project.name.includes("mobile")) {
+    const mobileNav = page.getByRole("navigation", { name: "移动端主导航" });
+    await expect(mobileNav).toBeVisible();
+    await expect(mobileNav).toHaveCSS("backdrop-filter", "none");
+    await expect(mobileNav.getByRole("button")).toHaveCount(5);
+
+    const targets = await mobileNav.getByRole("button").evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        return { width: box.width, height: box.height };
+      }),
+    );
+    expect(targets.every((target) => target.width >= 44 && target.height >= 44)).toBeTruthy();
+
+    await mobileNav.getByRole("button", { name: "更多功能" }).click();
+    await expect(page.getByRole("dialog", { name: "更多功能" })).toBeVisible();
+    await expect(page.getByText("治理与分析", { exact: true })).toBeVisible();
+  } else {
+    const desktopNav = page.getByRole("navigation", { name: "控制台主导航" });
+    await expect(desktopNav).toBeVisible();
+    const overview = desktopNav.getByRole("button", { name: "概览" });
+    await overview.focus();
+    await expect(overview).toBeFocused();
+    await expect(overview).toHaveCSS("outline-style", "solid");
+
+    const surfaces = await page.evaluate(() => {
+      const sidebar = document.querySelector('[class*="sidebar"]');
+      const topbar = document.querySelector('[class*="topbar"]');
+      return {
+        sidebar: sidebar ? getComputedStyle(sidebar).backgroundColor : "",
+        topbar: topbar ? getComputedStyle(topbar).backgroundColor : "",
+      };
+    });
+    expect(surfaces.sidebar).toBe("rgb(236, 236, 232)");
+    expect(surfaces.topbar).toBe("rgb(255, 255, 255)");
   }
 });

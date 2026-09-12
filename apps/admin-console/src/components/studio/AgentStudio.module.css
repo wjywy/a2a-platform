@@ -55,13 +55,9 @@
   min-width: 0;
   height: var(--studio-header-height);
   padding: 0 14px;
-  background: color-mix(
-    in srgb,
-    var(--color-surface-canvas, #fff) 94%,
-    transparent
-  );
-  border-bottom: 1px solid transparent;
-  backdrop-filter: blur(12px);
+  background: var(--color-surface-canvas, #fff);
+  border-bottom: 1px solid var(--color-border-faint, #e8e8e3);
+  backdrop-filter: none;
 }
 
 .headerLeading,
@@ -1225,7 +1221,7 @@
 
 .studioDrawer :global(.ant-drawer-mask) {
   background: rgb(0 0 0 / 28%);
-  backdrop-filter: blur(1px);
+  backdrop-filter: none;
 }
 
 .studioDrawer :global(.ant-drawer-content-wrapper) {
@@ -1253,13 +1249,9 @@
   min-height: 66px;
   margin: 0 -4px;
   padding: 10px 0;
-  background: color-mix(
-    in srgb,
-    var(--color-surface-canvas, #fff) 94%,
-    transparent
-  );
-  border-bottom: 1px solid var(--color-border-subtle, #e7e7e7);
-  backdrop-filter: blur(12px);
+  background: var(--color-surface-canvas, #fff);
+  border-bottom: 1px solid var(--color-border-subtle, #ddddd7);
+  backdrop-filter: none;
 }
 
 .panelHeader > span:first-child {
@@ -2808,5 +2800,84 @@
 
   .studioHistoryBackdrop {
     bottom: var(--mobile-nav-height, 0px);
+  }
+}
+
+/* Conversation workspace uses opaque paper surfaces so activity stays legible
+   while histories, tools and the composer can open without visual haze. */
+.studioWorkspace,
+.conversationWorkspace,
+.conversationSurface {
+  background: var(--color-surface-canvas);
+}
+
+.historyPanel {
+  background: var(--color-sidebar-background);
+  border-right: 1px solid var(--color-border-faint);
+}
+
+.historyHeader {
+  border-bottom: 1px solid var(--color-border-faint);
+}
+
+.historyPrimaryActions {
+  padding-bottom: 10px;
+}
+
+.newConversationButton,
+.historyItem,
+.historySelect {
+  border-radius: var(--radius-md);
+}
+
+.messageRow {
+  padding-top: 16px;
+}
+
+.userMessageRow .messageContent {
+  background: var(--color-user-message);
+  border-radius: 22px;
+}
+
+.composerDock {
+  padding-top: 8px;
+  background: var(--color-surface-canvas);
+  border-top: 1px solid var(--color-border-faint);
+}
+
+.composer {
+  background: var(--color-composer-background);
+  border-color: var(--color-border-faint);
+  box-shadow: none;
+}
+
+.composer:focus-within {
+  background: var(--color-composer-background-active);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-focus);
+}
+
+.panelHeader,
+.studioHeader {
+  background: var(--color-surface-canvas);
+  backdrop-filter: none;
+}
+
+@media (max-width: 768px) {
+  .historyPanel {
+    background: var(--color-sidebar-background);
+    border-right: 1px solid var(--color-border-faint);
+  }
+
+  .studioHeader {
+    border-bottom-color: var(--color-border-faint);
+  }
+
+  .composerDock {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .messageRow {
+    padding-top: 14px;
   }
 }

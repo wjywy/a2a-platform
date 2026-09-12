@@ -459,7 +459,7 @@ summary:focus-visible,
 .ant-modal-mask,
 .ant-drawer-mask {
   background: rgb(0 0 0 / 32%) !important;
-  backdrop-filter: blur(1px);
+  backdrop-filter: none;
 }
 
 .ant-modal-content,
@@ -499,13 +499,8 @@ summary:focus-visible,
 .ant-skeleton .ant-skeleton-avatar,
 .ant-skeleton .ant-skeleton-button,
 .ant-skeleton .ant-skeleton-input {
-  background: linear-gradient(
-    90deg,
-    var(--color-surface-muted) 25%,
-    var(--color-surface-subtle) 37%,
-    var(--color-surface-muted) 63%
-  ) !important;
-  background-size: 400% 100% !important;
+  background: var(--color-surface-muted) !important;
+  background-size: auto !important;
 }
 
 .ant-message-notice-content,
@@ -692,5 +687,47 @@ summary:focus-visible,
 @keyframes app-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Console-wide rhythm: controls stay compact, while dense data retains a clear scan line. */
+.ant-btn,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-select-selector,
+.ant-picker,
+.ant-input-number {
+  min-height: var(--control-height-md);
+}
+
+.ant-table-wrapper .ant-table {
+  font-variant-numeric: tabular-nums;
+}
+
+.ant-table-thead > tr > th {
+  letter-spacing: 0.01em;
+}
+
+.ant-table-tbody > tr > td {
+  vertical-align: middle;
+}
+
+.ant-result,
+.ant-empty {
+  padding-block: 40px;
+}
+
+@media (max-width: 760px) {
+  .ant-modal {
+    max-width: calc(100vw - 24px);
+    margin: 0 auto;
+  }
+
+  .ant-drawer-content-wrapper {
+    max-width: min(100vw, 560px);
+  }
+
+  .ant-table-wrapper .ant-table {
+    font-size: var(--font-size-sm);
   }
 }
