@@ -2,18 +2,20 @@ import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { pool } from "./db.js";
 import { ensureSymbolBuiltinAgents } from "./symbol-bootstrap.js";
+import { ensureChannelCompassAgent } from "./channel-compass-bootstrap.js";
 
 const app = createApp();
 let server: ReturnType<typeof app.listen>;
 
 async function start() {
   await ensureSymbolBuiltinAgents();
+  await ensureChannelCompassAgent();
   server = app.listen(config.port, () =>
     console.log(`A2A platform API listening on :${config.port}`),
   );
 }
 void start().catch((error) => {
-  console.error("Failed to register built-in Symbol agents:", error);
+  console.error("Failed to register built-in agents:", error);
   process.exit(1);
 });
 

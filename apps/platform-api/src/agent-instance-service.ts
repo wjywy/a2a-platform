@@ -2,8 +2,8 @@ import { z } from "zod";
 import { pool, query } from "./db.js";
 import { AppError, ConflictError, NotFoundError } from "./domain.js";
 import {
-  isTrustedSymbolInternalUrl,
-  symbolUpstreamUrl,
+  builtInUpstreamUrl,
+  isTrustedBuiltInInternalUrl,
   validateRemoteAgent,
 } from "./agent-service.js";
 import {
@@ -273,18 +273,18 @@ export async function checkAgentInstance(
   let error: string | undefined;
   try {
     const credential = decryptCredential(credentialInput(row));
-    const cardUrl = symbolUpstreamUrl(row.card_url);
+    const cardUrl = builtInUpstreamUrl(row.card_url);
     const allowPrivate =
-      allowPrivateOutboundTargets() || isTrustedSymbolInternalUrl(cardUrl);
+      allowPrivateOutboundTargets() || isTrustedBuiltInInternalUrl(cardUrl);
     await validateRemoteAgent(cardUrl, credential, { allowPrivate });
-    const endpoint = symbolUpstreamUrl(row.selected_interface.url);
+    const endpoint = builtInUpstreamUrl(row.selected_interface.url);
     await assertSafeOutboundUrl(endpoint, {
       purpose: "agent_card",
       allowPrivate:
-        allowPrivateOutboundTargets() || isTrustedSymbolInternalUrl(endpoint),
+        allowPrivateOutboundTargets() || isTrustedBuiltInInternalUrl(endpoint),
     });
     const endpointAllowPrivate =
-      allowPrivateOutboundTargets() || isTrustedSymbolInternalUrl(endpoint);
+      allowPrivateOutboundTargets() || isTrustedBuiltInInternalUrl(endpoint);
     const response = await secureFetchWithPolicy(
       endpoint,
       {

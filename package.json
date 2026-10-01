@@ -19,10 +19,12 @@
     "platform:verify": "tsx scripts/verify-platform.ts",
     "lines": "tsx scripts/count-effective-lines.ts",
     "platform:logs": "docker compose -f infra/docker-compose.yml logs -f api worker",
+    "audit:ui": "tsx scripts/audit-chatgpt-ui-css.ts",
     "down": "docker compose -f infra/docker-compose.yml down"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "postcss": "^8.5.26",
     "prettier": "^3.9.6",
     "tsx": "^4.23.12"
   },

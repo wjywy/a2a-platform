@@ -1,9 +1,9 @@
 .shell {
-  --shell-sidebar-width: var(--console-sidebar-width, 232px);
+  --shell-sidebar-width: var(--console-sidebar-width, 260px);
   min-width: 0;
   min-height: 100dvh;
   color: var(--color-text-primary);
-  background: var(--color-surface-layout);
+  background: var(--color-surface-canvas);
 }
 
 .sidebar {
@@ -14,14 +14,14 @@
   flex-direction: column;
   width: var(--shell-sidebar-width);
   min-width: 0;
-  padding: 14px 10px 12px;
+  padding: 10px 8px 12px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   color: var(--color-text-primary);
   background: var(--color-sidebar-background);
-  border-right: 1px solid transparent;
-  scrollbar-color: rgb(33 33 33 / 16%) transparent;
+  border-right: 0;
+  scrollbar-color: rgb(13 13 13 / 16%) transparent;
   scrollbar-width: thin;
 }
 
@@ -29,9 +29,9 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  min-height: 48px;
+  min-height: 44px;
   gap: 9px;
-  padding: 2px 8px 10px;
+  padding: 0 8px 8px;
   color: var(--color-text-primary);
   font-family: var(--font-display);
   font-size: 15px;
@@ -47,27 +47,19 @@
 }
 
 .brand small {
-  display: block;
-  margin-top: 1px;
-  overflow: hidden;
-  color: var(--color-text-tertiary);
-  font-family: var(--font-sans);
-  font-size: 8px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.12em;
-  text-overflow: ellipsis;
+  display: none;
 }
 
 .brandMark {
   display: inline-grid;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   place-items: center;
   color: var(--color-action-on-primary);
   background: var(--color-action-primary);
   border-radius: var(--radius-md);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: var(--font-weight-bold);
 }
 
@@ -75,7 +67,7 @@
   justify-content: flex-start !important;
   width: 100%;
   min-height: 40px;
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   padding-inline: 12px !important;
   color: var(--color-text-primary) !important;
   background: transparent !important;
@@ -98,16 +90,16 @@
 
 .navGroup {
   min-width: 0;
-  margin: 2px 0 12px;
+  margin: 0 0 8px;
 }
 
 .navGroup > span {
   display: block;
-  padding: 6px 10px 4px;
+  padding: 8px 10px 4px;
   color: var(--color-text-tertiary);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .navGroup :global(.ant-btn) {
@@ -116,7 +108,7 @@
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
-  height: 38px;
+  height: 40px;
   gap: 9px;
   padding-inline: 11px !important;
   overflow: hidden;
@@ -166,10 +158,10 @@
 .sidebarFooter {
   display: grid;
   min-width: 0;
-  gap: 10px;
+  gap: 8px;
   margin-top: auto;
   padding: 12px 4px 0;
-  border-top: 1px solid var(--color-border-faint);
+  border-top: 0;
 }
 
 .tenantSelector {
@@ -190,10 +182,10 @@
 }
 
 .tenantSelector :global(.ant-select-selector) {
-  min-height: 34px !important;
+  min-height: 40px !important;
   padding-inline: 9px !important;
   background: var(--color-surface-canvas) !important;
-  border-color: var(--color-border-faint) !important;
+  border-color: transparent !important;
   border-radius: var(--radius-md) !important;
   box-shadow: none !important;
 }
@@ -268,9 +260,9 @@
 }
 
 .account :global(.ant-btn) {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
   padding: 0;
   color: var(--color-icon-secondary);
   background: transparent;
@@ -284,32 +276,33 @@
   min-height: 100dvh;
   margin-left: var(--shell-sidebar-width);
   overflow-x: clip;
+  background: var(--color-surface-canvas);
 }
 
 .topbar {
+  position: sticky;
+  z-index: 20;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   min-width: 0;
   min-height: var(--console-topbar-height);
-  gap: 24px;
-  padding: 15px clamp(20px, 3vw, 36px);
+  gap: 16px;
+  padding: 8px clamp(24px, 3vw, 40px);
   background: var(--color-surface-canvas);
-  border-bottom: 1px solid var(--color-border-faint);
+  border-bottom: 0;
 }
 
 .topbar > div:first-child {
+  display: flex;
+  align-items: baseline;
   min-width: 0;
+  gap: 10px;
 }
 
 .topbar p {
-  margin: 0 0 2px;
-  overflow: hidden;
-  color: var(--color-text-tertiary);
-  font-size: 9px;
-  font-weight: var(--font-weight-medium);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: none;
 }
 
 .topbar h1 {
@@ -317,19 +310,19 @@
   overflow: hidden;
   color: var(--color-text-primary);
   font-family: var(--font-display);
-  font-size: clamp(20px, 2.3vw, 24px);
+  font-size: 16px;
   font-weight: var(--font-weight-semibold);
   line-height: var(--line-height-tight);
-  letter-spacing: -0.025em;
+  letter-spacing: -0.012em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .topbar > div:first-child > span {
   display: block;
-  margin-top: 3px;
+  margin-top: 0;
   overflow: hidden;
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -343,18 +336,18 @@
 }
 
 .topbarActions :global(.ant-badge-status-text) {
-  color: var(--color-text-secondary) !important;
+  color: var(--color-text-tertiary) !important;
   font-size: var(--font-size-xs);
 }
 
 .topbarActions :global(.ant-btn) {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
   padding: 0;
   color: var(--color-icon-secondary);
-  background: var(--color-surface-canvas);
-  border: 1px solid var(--color-border-subtle);
+  background: transparent;
+  border: 0;
   border-radius: var(--radius-md);
   box-shadow: none;
 }
@@ -363,7 +356,7 @@
   width: min(100%, var(--console-content-width));
   min-width: 0;
   margin: 0 auto;
-  padding: 22px clamp(20px, 3vw, 36px) 48px;
+  padding: 20px clamp(24px, 3vw, 40px) 48px;
 }
 
 .pageCachePane {
@@ -420,7 +413,7 @@
 }
 
 :global(.ant-tooltip .ant-tooltip-container) {
-  border: 1px solid var(--color-border-subtle) !important;
+  border: 0 !important;
   box-shadow: var(--shadow-md) !important;
 }
 
@@ -476,14 +469,11 @@
     --shell-sidebar-width: 0px;
     min-height: 100dvh;
     padding-bottom: calc(64px + var(--safe-bottom));
-    background: var(--color-surface-layout);
+    background: var(--color-surface-canvas);
   }
 
   .sidebar {
-    position: sticky;
-    z-index: 30;
-    top: 0;
-    display: flex;
+    display: none;
     flex-direction: row;
     align-items: center;
     width: 100%;
@@ -492,9 +482,8 @@
     min-height: calc(56px + var(--safe-top));
     padding: var(--safe-top) 10px 0;
     overflow: hidden;
-    background: var(--color-surface-canvas);
-    border-right: 0;
-    border-bottom: 1px solid var(--color-border-faint);
+    background: var(--color-sidebar-background);
+    border: 0;
   }
 
   .brand {
@@ -544,16 +533,16 @@
 
   .topbar {
     min-height: var(--console-topbar-height);
-    gap: 12px;
-    padding: 11px 14px;
+    gap: 10px;
+    padding: 0 16px;
   }
 
   .topbar h1 {
-    font-size: 19px;
+    font-size: 16px;
   }
 
   .topbar > div:first-child > span {
-    max-width: calc(100vw - 28px);
+    display: none;
   }
 
   .topbarActions {
@@ -563,7 +552,7 @@
   .pageBody {
     width: 100%;
     max-width: 100vw;
-    padding: 14px 12px calc(20px + var(--safe-bottom));
+    padding: 16px 12px calc(20px + var(--safe-bottom));
     overflow-x: clip;
   }
 
@@ -582,11 +571,7 @@
     overflow-y: hidden;
     overscroll-behavior-x: contain;
     color: var(--color-text-tertiary);
-    background: color-mix(
-      in srgb,
-      var(--color-surface-canvas) 96%,
-      transparent
-    );
+    background: var(--color-surface-canvas);
     border-top: 1px solid var(--color-border-faint);
     backdrop-filter: none;
     scrollbar-width: none;
@@ -660,15 +645,6 @@
 }
 
 @media (max-width: 380px) {
-  .brand {
-    font-size: 14px;
-  }
-
-  .sidebarPrimary {
-    max-width: 132px;
-    font-size: 10px;
-  }
-
   .mobileNav :global(.ant-btn) {
     width: 60px;
     min-width: 60px;
@@ -742,7 +718,7 @@
   gap: 10px;
   padding: 8px 12px;
   color: var(--color-text-primary);
-  background: var(--color-surface-muted);
+  background: var(--color-surface-subtle);
   border-radius: var(--radius-md);
 }
 
@@ -787,17 +763,21 @@
     padding-inline: 2px !important;
   }
 
-  .debugShell .mobileNav {
-    display: flex !important;
+  .debugShell {
+    padding-bottom: 0;
   }
 
   .debugShell .main,
   .debugShell .pageBody {
-    height: calc(100dvh - var(--mobile-nav-height));
+    height: 100dvh;
+  }
+
+  .debugShell .mobileNav {
+    display: none !important;
   }
 
   .mobileMoreDrawer :global(.ant-drawer-content) {
-    border-radius: 16px 16px 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
 
   .mobileMoreDrawer :global(.ant-drawer-header) {
@@ -816,24 +796,24 @@
 /* Light console refinement: navigation groups frame work without turning the
    console into a card wall. */
 .sidebar {
-  border-right-color: var(--color-border-faint);
+  border-right-color: transparent;
 }
 
 .navGroup {
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .navGroup > span {
   padding-top: 8px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 
 .topbar {
-  padding-block: 14px;
+  padding-block: 8px;
 }
 
 .pageBody {
-  padding-top: 28px;
+  padding-top: 20px;
 }
 
 @media (max-width: 760px) {
@@ -842,7 +822,7 @@
   }
 
   .topbar {
-    padding-block: 12px;
+    padding-block: 0;
   }
 
   .pageBody {
@@ -852,7 +832,7 @@
   .mobileNav {
     background: var(--color-surface-canvas);
     border-top-color: var(--color-border-subtle);
-    box-shadow: 0 -1px 0 rgb(31 31 28 / 3%);
+    box-shadow: 0 -1px 0 rgb(13 13 13 / 3%);
     backdrop-filter: none;
   }
 
@@ -862,7 +842,7 @@
   }
 
   .mobileNav :global(.ant-btn > span:last-child) {
-    font-size: 9px;
+    font-size: 10px;
     line-height: 14px;
   }
 

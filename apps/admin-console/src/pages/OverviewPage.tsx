@@ -34,6 +34,49 @@ export function OverviewPage({
       error={state.error}
       retry={() => void state.refresh()}
     >
+      <section className={`${styles.panel} ${styles.primaryPanel}`}>
+        <SectionHeader
+          title="任务状态"
+          description="最近处理结果"
+          actions={
+            <Button type="link" size="small" onClick={openTasks}>
+              进入任务中心
+            </Button>
+          }
+        />
+        <div className={styles.taskDistribution}>
+          {[
+            ["处理中", value?.taskStats.working ?? 0, "working"],
+            ["已完成", value?.taskStats.completed ?? 0, "completed"],
+            ["失败", value?.taskStats.failed ?? 0, "failed"],
+          ].map(([label, count, tone]) => (
+            <div key={String(label)}>
+              <span>
+                <i className={styles[String(tone)]} />
+                {label}
+              </span>
+              <b>{count}</b>
+            </div>
+          ))}
+        </div>
+        <div className={styles.infoRows}>
+          <div>
+            <span>平均任务耗时</span>
+            <b>{formatDuration(value?.taskStats.averageDurationMs ?? 0)}</b>
+          </div>
+          <div>
+            <span>异常 Agent</span>
+            <Button
+              type="link"
+              size="small"
+              icon={<ArrowRightOutlined />}
+              onClick={openAlerts}
+            >
+              {value?.summary.unhealthyAgents ?? 0} 个
+            </Button>
+          </div>
+        </div>
+      </section>
       <div className={styles.metricGrid}>
         <MetricCard
           label="已注册 Agent"
@@ -94,49 +137,6 @@ export function OverviewPage({
               </Button>
             ))}
             {!agents.length && <p className={styles.inlineEmpty}>暂无 Agent</p>}
-          </div>
-        </section>
-        <section className={styles.panel}>
-          <SectionHeader
-            title="任务状态"
-            description="最近处理结果"
-            actions={
-              <Button type="link" size="small" onClick={openTasks}>
-                进入任务中心
-              </Button>
-            }
-          />
-          <div className={styles.taskDistribution}>
-            {[
-              ["处理中", value?.taskStats.working ?? 0, "working"],
-              ["已完成", value?.taskStats.completed ?? 0, "completed"],
-              ["失败", value?.taskStats.failed ?? 0, "failed"],
-            ].map(([label, count, tone]) => (
-              <div key={String(label)}>
-                <span>
-                  <i className={styles[String(tone)]} />
-                  {label}
-                </span>
-                <b>{count}</b>
-              </div>
-            ))}
-          </div>
-          <div className={styles.infoRows}>
-            <div>
-              <span>平均任务耗时</span>
-              <b>{formatDuration(value?.taskStats.averageDurationMs ?? 0)}</b>
-            </div>
-            <div>
-              <span>异常 Agent</span>
-              <Button
-                type="link"
-                size="small"
-                icon={<ArrowRightOutlined />}
-                onClick={openAlerts}
-              >
-                {value?.summary.unhealthyAgents ?? 0} 个
-              </Button>
-            </div>
           </div>
         </section>
         <section className={`${styles.panel} ${styles.widePanel}`}>

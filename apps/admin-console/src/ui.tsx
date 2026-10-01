@@ -222,11 +222,14 @@ export function Modal({
       width={width === "wide" ? 820 : 520}
       title={
         <Space direction="vertical" size={1}>
-          <Typography.Title level={4} style={{ margin: 0 }}>
+          <Typography.Title level={4} className={styles.dialogTitle}>
             {title}
           </Typography.Title>
           {description && (
-            <Typography.Text type="secondary" style={{ fontWeight: 400 }}>
+            <Typography.Text
+              type="secondary"
+              className={styles.dialogDescription}
+            >
               {description}
             </Typography.Text>
           )}
@@ -308,7 +311,10 @@ export function Drawer({
         <Space direction="vertical" size={0}>
           <span>{title}</span>
           {subtitle && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <Typography.Text
+              type="secondary"
+              className={styles.drawerSubtitle}
+            >
               {subtitle}
             </Typography.Text>
           )}
@@ -471,19 +477,12 @@ export function MetricCard({
   detail?: string;
   tone?: "neutral" | "good" | "warn" | "bad";
 }) {
-  const colors = {
-    neutral: "#1f2533",
-    good: "#14875d",
-    warn: "#b66b12",
-    bad: "#cc3f45",
-  };
   return (
-    <Card size="small" className={styles.metricCard}>
-      <Statistic
-        title={label}
-        value={value}
-        valueStyle={{ color: colors[tone] }}
-      />
+    <Card
+      size="small"
+      className={`${styles.metricCard} ${styles[`metric_${tone}`]}`}
+    >
+      <Statistic title={label} value={value} />
       {detail && <Typography.Text type="secondary">{detail}</Typography.Text>}
     </Card>
   );

@@ -313,7 +313,7 @@ function ApiKeyForm({
           ].map(([label, field]) => (
             <Field key={field} label={label} hint="留空继承租户">
               <InputNumber
-                style={{ width: "100%" }}
+                className={styles.fullWidthControl}
                 min={1}
                 value={Number(form[field as keyof typeof form]) || null}
                 onChange={(number) =>

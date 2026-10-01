@@ -339,10 +339,14 @@
   content: "";
   transition: background-color var(--duration-hover) var(--ease-standard);
 }
-.studioResizer:hover::after,
 .studioResizer:focus-visible::after,
 .studioResizerActive::after {
   background: #8db7ff;
+}
+@media (hover: hover) and (pointer: fine) {
+  .studioResizer:hover::after {
+    background: #8db7ff;
+  }
 }
 .studioResizer:focus-visible {
   outline: none;
@@ -477,9 +481,13 @@
 .studioHistoryLabelFilter {
   display: block;
 }
-.studioHistoryToggle:hover,
 .studioHistoryToggleActive {
   color: #202020;
+}
+@media (hover: hover) and (pointer: fine) {
+  .studioHistoryToggle:hover {
+    color: #202020;
+  }
 }
 .studioHistorySearch {
   display: block;
@@ -491,9 +499,13 @@
   color: #171717;
   font-size: 12px;
 }
-.studioHistorySearch:hover,
 .studioHistorySearch:focus {
   background: #e9e9e9;
+}
+@media (hover: hover) and (pointer: fine) {
+  .studioHistorySearch:hover {
+    background: #e9e9e9;
+  }
 }
 .studioHistoryLabelFilter {
   width: calc(100% - 20px);
@@ -528,7 +540,7 @@
   padding: 10px 32px 10px 10px;
   text-align: left;
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .studioHistorySelect:hover {
     background: #eeeeee;
   }
@@ -572,9 +584,13 @@
   display: none;
   gap: 0;
 }
-.studioHistoryItem:hover .studioHistoryActions,
 .studioHistoryItemActive .studioHistoryActions {
   display: flex;
+}
+@media (hover: hover) and (pointer: fine) {
+  .studioHistoryItem:hover .studioHistoryActions {
+    display: flex;
+  }
 }
 .studioHistoryActions :global(.ant-btn) {
   min-width: 28px;
@@ -711,11 +727,15 @@
 .studioUserMessage .studioMessageActions {
   justify-content: flex-end;
 }
-.studioUserMessage:hover .studioMessageActions,
 .studioUserMessage:focus-within .studioMessageActions,
-.studioAgentMessage:hover .studioMessageActions,
 .studioAgentMessage:focus-within .studioMessageActions {
   opacity: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .studioUserMessage:hover .studioMessageActions,
+  .studioAgentMessage:hover .studioMessageActions {
+    opacity: 1;
+  }
 }
 .studioMessageActions :global(.ant-btn) {
   min-width: 28px;
@@ -723,9 +743,11 @@
   border-radius: 7px;
   color: #737373;
 }
-.studioMessageActions :global(.ant-btn:hover) {
-  background: #f0f0f0;
-  color: #242424;
+@media (hover: hover) and (pointer: fine) {
+  .studioMessageActions :global(.ant-btn:hover) {
+    background: #f0f0f0;
+    color: #242424;
+  }
 }
 .studioMessageEditor {
   display: grid;
@@ -1276,28 +1298,15 @@
   color: #fff;
 }
 
-.primaryButton:hover {
-  background: var(--blue-strong);
-}
-
 .secondaryButton {
   border: 1px solid #dedede;
   background: #fff;
   color: #3d3d3d;
 }
 
-.secondaryButton:hover {
-  border-color: #bdbdbd;
-  background: #f5f5f5;
-}
-
 .dangerButton {
   background: #d7474d;
   color: #fff;
-}
-
-.dangerButton:hover {
-  background: #bc333a;
 }
 
 .primaryButton:disabled,
@@ -3937,5 +3946,649 @@
 
   .antStatePanel {
     min-height: 220px;
+  }
+}
+
+/*
+ * Management workspace convergence
+ *
+ * The canvas carries the hierarchy. Main sections sit on one calm white
+ * surface; nested records step down to the subtle neutral instead of adding
+ * another border and shadow at every level.
+ */
+.pageBody {
+  width: min(1180px, 100%);
+  padding: 20px 28px 64px;
+}
+
+.panel {
+  margin-bottom: 12px;
+  padding: 24px;
+  background: var(--color-surface-canvas);
+  border: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+.sectionHeader {
+  min-height: 0;
+  margin-bottom: 18px;
+}
+
+.sectionHeader h2 {
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+
+.sectionHeader p {
+  max-width: 62ch;
+  margin-top: 4px;
+  color: var(--color-text-tertiary);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.dialogTitle {
+  margin: 0 !important;
+  font-size: 18px !important;
+  letter-spacing: -0.012em;
+}
+
+.dialogDescription {
+  color: var(--color-text-secondary) !important;
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-copy);
+}
+
+.drawerSubtitle {
+  color: var(--color-text-tertiary) !important;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+}
+
+.primaryButton {
+  color: var(--color-action-on-primary);
+  background: var(--color-action-primary);
+}
+
+.secondaryButton {
+  color: var(--color-text-primary);
+  background: var(--color-action-secondary);
+  border-color: var(--color-border-subtle);
+}
+
+.dangerButton {
+  color: var(--color-action-on-primary);
+  background: var(--color-action-danger);
+}
+
+.textButton,
+.rowActions button,
+.webhookCard footer button,
+.alertList footer button,
+.ruleList footer button,
+.deliveryList footer button,
+.keyList footer button,
+.infoRows button {
+  color: var(--color-link);
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+  margin-bottom: 12px;
+  background: var(--color-surface-canvas);
+  border-radius: var(--radius-lg);
+}
+
+.metricCard {
+  position: relative;
+  min-height: 96px;
+  padding: 17px 18px !important;
+  background: transparent;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.metricCard:not(:first-child)::before {
+  position: absolute;
+  top: 18px;
+  bottom: 18px;
+  left: 0;
+  width: 1px;
+  background: var(--color-divider);
+  content: "";
+}
+
+.metricCard :global(.ant-card-body) {
+  padding: 0 !important;
+}
+
+.metricCard :global(.ant-statistic-title) {
+  margin-bottom: 7px;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.metricCard :global(.ant-statistic-content) {
+  color: var(--color-text-primary);
+  font-size: clamp(22px, 2vw, 27px);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.028em;
+}
+
+.metricCard > :global(.ant-card-body) > :global(.ant-typography) {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+}
+
+.metric_neutral :global(.ant-statistic-content) {
+  color: var(--color-text-primary);
+}
+
+.metric_good :global(.ant-statistic-content) {
+  color: var(--color-status-success);
+}
+
+.metric_warn :global(.ant-statistic-content) {
+  color: var(--color-status-warning);
+}
+
+.metric_bad :global(.ant-statistic-content) {
+  color: var(--color-status-danger);
+}
+
+.primaryPanel {
+  margin-bottom: 12px;
+}
+
+.primaryPanel .sectionHeader {
+  margin-bottom: 14px;
+}
+
+.dashboardGrid,
+.splitWorkspace,
+.alertLayout,
+.debugGrid {
+  gap: 12px;
+}
+
+.dashboardGrid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+}
+
+.dashboardGrid .widePanel {
+  grid-column: 1 / -1;
+  order: 1;
+}
+
+.taskDistribution {
+  gap: 0;
+  overflow: hidden;
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-md);
+}
+
+.taskDistribution > div {
+  position: relative;
+  padding: 14px 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.taskDistribution > div + div::before {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 1px;
+  background: var(--color-divider);
+  content: "";
+}
+
+.taskDistribution span,
+.infoRows span {
+  color: var(--color-text-tertiary);
+}
+
+.taskDistribution b,
+.infoRows b,
+.systemGrid b,
+.webhookCard dd,
+.alertList dd {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.taskDistribution span i,
+.timeline > div > i,
+.statusBadge i {
+  background: var(--color-text-quaternary);
+}
+
+.taskDistribution i.working,
+.status_degraded i,
+.status_invited i,
+.status_working i,
+.status_retrying i,
+.status_delivering i,
+.status_silenced i {
+  background: var(--color-status-warning);
+}
+
+.taskDistribution i.completed,
+.status_active i,
+.status_online i,
+.status_healthy i,
+.status_succeeded i,
+.status_completed i,
+.status_resolved i {
+  background: var(--color-status-success);
+}
+
+.taskDistribution i.failed,
+.status_unhealthy i,
+.status_failed i,
+.status_dead_letter i,
+.status_open i,
+.status_cancelled i {
+  background: var(--color-status-danger);
+}
+
+.infoRows {
+  border-top-color: var(--color-divider);
+}
+
+.infoRows > div,
+.compactAgent,
+.detailList > div,
+.operationList button,
+.settingsRow {
+  border-bottom-color: var(--color-border-faint);
+}
+
+.compactAgent {
+  padding: 11px 8px;
+}
+
+.compactAgentContent > b,
+.identityCell > b,
+.agentCardAction header > b {
+  color: var(--color-text-primary);
+  background: var(--color-surface-muted);
+}
+
+.compactAgent small,
+.identityCell small,
+.agentCardAction small,
+.agentTileContent > p,
+.operationList small,
+.roleLegend span,
+.timeline small {
+  color: var(--color-text-tertiary);
+}
+
+.barChart,
+.usageChart {
+  border-bottom-color: var(--color-divider);
+}
+
+.barChart > div span,
+.usageChart span {
+  background: var(--color-action-primary);
+  opacity: 0.68;
+}
+
+.barChart > div i,
+.usageChart i {
+  background: var(--color-status-danger);
+}
+
+.barChart p,
+.usageChart p,
+.usageChart small {
+  color: var(--color-text-tertiary);
+}
+
+.searchBox {
+  color: var(--color-icon-secondary);
+  background: var(--color-surface-subtle);
+  border-color: transparent;
+  border-radius: var(--radius-md);
+}
+
+.searchBox:focus-within {
+  background: var(--color-surface-canvas);
+  box-shadow: var(--shadow-focus);
+}
+
+.tableWrap table,
+.panel :global(.ant-table) {
+  font-variant-numeric: tabular-nums;
+}
+
+.tableWrap th,
+.panel :global(.ant-table-thead > tr > th) {
+  color: var(--color-text-tertiary) !important;
+  background: transparent !important;
+  border-top-color: var(--color-divider);
+  border-bottom-color: var(--color-divider) !important;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.tableWrap td,
+.panel :global(.ant-table-tbody > tr > td) {
+  color: var(--color-text-secondary);
+  background: transparent;
+  border-bottom-color: var(--color-border-faint) !important;
+}
+
+.tableWrap td > b,
+.tableWrap td strong,
+.identityCell strong {
+  color: var(--color-text-primary);
+}
+
+.tableWrap td > small,
+.taskLink small,
+.pagination {
+  color: var(--color-text-tertiary);
+}
+
+.pagination {
+  border-top-color: var(--color-divider);
+}
+
+.antStatePanel {
+  min-height: 220px;
+  padding: 36px 20px;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-subtle);
+  border: 0;
+  border-radius: var(--radius-md);
+}
+
+.statePanel > span {
+  color: var(--color-icon-secondary);
+  background: var(--color-surface-muted);
+}
+
+.statePanel b {
+  color: var(--color-text-primary);
+}
+
+.statePanel p {
+  color: var(--color-text-tertiary);
+}
+
+.spinner {
+  border-color: var(--color-border-subtle);
+  border-top-color: var(--color-action-primary);
+}
+
+.errorState > span {
+  color: var(--color-status-danger);
+  background: var(--color-status-danger-bg);
+}
+
+.agentCard,
+.webhookCard,
+.keyList article,
+.deliveryList article,
+.alertList article,
+.ruleList article,
+.roleLegend > div,
+.systemGrid > div {
+  background: var(--color-surface-subtle);
+  border: 0 !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: none !important;
+}
+
+.agentCardAction {
+  min-height: 136px;
+  border-radius: var(--radius-md) !important;
+}
+
+.agentCardActive {
+  background: var(--color-surface-muted);
+  outline: 1px solid var(--color-border-default);
+  outline-offset: -1px;
+}
+
+.agentCardAction footer,
+.webhookCard footer,
+.alertList footer,
+.ruleList footer,
+.deliveryList footer,
+.keyList footer {
+  border-top-color: var(--color-divider);
+}
+
+.detailList,
+.operationList {
+  border-top-color: var(--color-divider);
+}
+
+.detailList dt,
+.webhookCard dt,
+.alertList dt,
+.keyList dt {
+  color: var(--color-text-tertiary);
+}
+
+.detailList dd,
+.operationList button,
+.settingsRow strong,
+.keyList dd,
+.deliveryList p {
+  color: var(--color-text-secondary);
+}
+
+.webhookCard > code,
+.keyList header code {
+  color: var(--color-code-text);
+  background: var(--color-code-inline);
+}
+
+.tagList span,
+.alertList header > span:nth-child(2) {
+  color: var(--color-text-secondary);
+  background: var(--color-surface-muted);
+}
+
+.alertList article,
+.alertList .severity_warning,
+.alertList .severity_critical {
+  border-left: 0;
+}
+
+.alertList .severity_warning {
+  background: var(--color-status-warning-bg);
+}
+
+.alertList .severity_critical {
+  background: var(--color-status-danger-bg);
+}
+
+.settingsRow code,
+.settingsRow strong {
+  color: var(--color-text-primary);
+}
+
+.settingsRow p,
+.settingsRow small,
+.settingsRow i,
+.systemGrid span,
+.systemGrid small {
+  color: var(--color-text-tertiary);
+}
+
+.fullWidthControl {
+  width: 100%;
+}
+
+.tenantSelect {
+  min-width: 170px;
+}
+
+.dateFilter {
+  width: 160px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .primaryButton:hover {
+    background: var(--color-action-primary-hover);
+  }
+
+  .secondaryButton:hover {
+    color: var(--color-text-primary);
+    background: var(--color-action-secondary-hover);
+    border-color: var(--color-border-default);
+  }
+
+  .dangerButton:hover {
+    background: var(--color-action-danger-hover);
+  }
+
+  .compactAgent:hover,
+  .operationList button:hover,
+  .settingsList > button:hover {
+    background: var(--color-surface-subtle) !important;
+    box-shadow: none;
+  }
+
+  .agentCard:not(.agentCardActive):has(.agentCardAction:hover),
+  .webhookCard:hover,
+  .keyList article:hover,
+  .deliveryList article:hover,
+  .ruleList article:hover {
+    background: var(--color-interactive-hover);
+  }
+
+  .agentCardActive:has(.agentCardAction:hover) {
+    background: var(--color-surface-muted);
+  }
+
+  .tableWrap .clickableRow:hover td,
+  .panel
+    :global(.ant-table-tbody > tr.ant-table-row:hover:not(.ant-table-row-selected) > td) {
+    background: var(--color-surface-subtle) !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 900px) {
+  .dashboardGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboardGrid .widePanel {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .pageBody {
+    width: 100%;
+    padding: 12px 12px calc(88px + var(--safe-bottom));
+  }
+
+  .panel {
+    margin-bottom: 10px;
+    padding: 17px 16px;
+  }
+
+  .sectionHeader {
+    margin-bottom: 14px;
+  }
+
+  .sectionHeader h2 {
+    font-size: 16px;
+  }
+
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 10px;
+  }
+
+  .metricCard {
+    min-height: 94px;
+    padding: 15px 14px !important;
+  }
+
+  .metricCard:nth-child(odd)::before {
+    display: none;
+  }
+
+  .metricCard:nth-child(n + 3)::after {
+    position: absolute;
+    top: 0;
+    right: 14px;
+    left: 14px;
+    height: 1px;
+    background: var(--color-divider);
+    content: "";
+  }
+
+  .metricCard :global(.ant-statistic-content) {
+    font-size: 22px;
+  }
+
+  .dashboardGrid,
+  .splitWorkspace,
+  .alertLayout,
+  .debugGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboardGrid .widePanel {
+    grid-column: auto;
+  }
+
+  .toolbar > :global(.ant-input),
+  .toolbar > :global(.ant-input-affix-wrapper),
+  .toolbar > :global(.ant-select),
+  .dateFilter,
+  .tenantSelect {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .taskDistribution > div {
+    padding: 13px 12px;
+  }
+
+  .agentCardAction {
+    min-height: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .panel,
+  .metricGrid,
+  .agentCard,
+  .webhookCard,
+  .keyList article,
+  .deliveryList article,
+  .alertList article,
+  .ruleList article,
+  .roleLegend > div,
+  .systemGrid > div {
+    border: 1px solid CanvasText !important;
+  }
+
+  .agentCardActive {
+    outline: 2px solid Highlight;
   }
 }

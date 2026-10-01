@@ -256,10 +256,20 @@ export function normalizeLocalDevelopmentEndpoints(
  * public Card contains localhost, which is not the API container; use the
  * explicitly configured service origin for the actual upstream hop only.
  */
-export function symbolUpstreamUrl(value: string): string {
-  const publicPrefix = `${config.platformOrigin}/api/builtin/symbol/`;
-  if (!value.startsWith(publicPrefix)) return value;
-  return `${config.symbolInternalOrigin}${value.slice(config.platformOrigin.length)}`;
+export function builtInUpstreamUrl(value: string): string {
+  const routes = [
+    {
+      prefix: `${config.platformOrigin}/api/builtin/symbol/`,
+      origin: config.symbolInternalOrigin,
+    },
+    {
+      prefix: `${config.platformOrigin}/api/builtin/channel-compass`,
+      origin: config.channelCompassInternalOrigin,
+    },
+  ];
+  const route = routes.find(({ prefix }) => value.startsWith(prefix));
+  if (!route) return value;
+  return `${route.origin}${value.slice(config.platformOrigin.length)}`;
 }
 
 /**
@@ -267,11 +277,19 @@ export function symbolUpstreamUrl(value: string): string {
  * registration input. Restrict the private-network exception to the bundled
  * Symbol path so registered third-party Agent URLs keep the SSRF boundary.
  */
-export function isTrustedSymbolInternalUrl(value: string): boolean {
-  return value.startsWith(
-    `${config.symbolInternalOrigin}/api/builtin/symbol/`,
+export function isTrustedBuiltInInternalUrl(value: string): boolean {
+  return (
+    value.startsWith(`${config.symbolInternalOrigin}/api/builtin/symbol/`) ||
+    value.startsWith(
+      `${config.channelCompassInternalOrigin}/api/builtin/channel-compass`,
+    )
   );
 }
+
+/** @deprecated Use builtInUpstreamUrl for all bundled agents. */
+export const symbolUpstreamUrl = builtInUpstreamUrl;
+/** @deprecated Use isTrustedBuiltInInternalUrl for all bundled agents. */
+export const isTrustedSymbolInternalUrl = isTrustedBuiltInInternalUrl;
 
 export async function getRemoteClient(
   agent: PlatformAgent,
@@ -281,9 +299,9 @@ export async function getRemoteClient(
   },
 ) {
   const selected = target?.selectedInterface ?? agent.selectedInterface;
-  const upstreamUrl = symbolUpstreamUrl(selected.url);
+  const upstreamUrl = builtInUpstreamUrl(selected.url);
   const allowPrivate =
-    allowPrivateOutboundTargets() || isTrustedSymbolInternalUrl(upstreamUrl);
+    allowPrivateOutboundTargets() || isTrustedBuiltInInternalUrl(upstreamUrl);
   await assertSafeOutboundUrl(upstreamUrl, {
     purpose: "agent_card",
     allowPrivate,

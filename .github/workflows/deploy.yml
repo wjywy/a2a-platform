@@ -49,6 +49,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm run audit:ui
       - run: npm run migrate
       - run: npm test
 

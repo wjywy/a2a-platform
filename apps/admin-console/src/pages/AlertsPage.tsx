@@ -567,7 +567,7 @@ function NotificationChannelForm({
         <div className={styles.limitGrid}>
           <Field label="超时 ms">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={500}
               max={30000}
               value={form.timeoutMs}
@@ -581,7 +581,7 @@ function NotificationChannelForm({
           </Field>
           <Field label="最大尝试">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={1}
               max={12}
               value={form.maxAttempts}
@@ -706,7 +706,7 @@ function AlertRuleForm({
           </Field>
           <Field label="阈值">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={0}
               value={form.threshold}
               onChange={(number) =>
@@ -716,7 +716,7 @@ function AlertRuleForm({
           </Field>
           <Field label="窗口（分钟）">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={1}
               max={1440}
               value={form.windowMinutes}
@@ -730,7 +730,7 @@ function AlertRuleForm({
           </Field>
           <Field label="冷却（分钟）">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={1}
               value={form.cooldownMinutes}
               onChange={(number) =>

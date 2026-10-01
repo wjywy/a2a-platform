@@ -6,6 +6,7 @@ import {
   type APIRequestContext,
   type Locator,
   type Page,
+  type Route,
 } from "@playwright/test";
 
 const apiBase = process.env.E2E_API_BASE_URL ?? "http://127.0.0.1:8080";
@@ -560,31 +561,58 @@ test("stream stop, recovery, keyboard commands and error retry remain mutually c
   await page.keyboard.press("Escape");
   await expect(settings).toBeHidden();
 
-  await composer.fill("请开始分析 AAPL，并先给出一句简短结论。 ");
-  await send.click();
-  const stop = page.getByRole("button", { name: "停止生成" });
-  await expect(stop).toBeVisible();
-  await stop.click();
-  await expect(stop).toHaveCount(0);
-  await expect(composer).toBeEnabled();
+  const streamRoute = "**/api/admin/studio/agents/*/a2a/rest/message:stream";
+  let releasePendingRequest = () => {};
+  let signalPendingRequest = () => {};
+  const pendingRequest = new Promise<void>((resolve) => {
+    releasePendingRequest = resolve;
+  });
+  const interceptedRequest = new Promise<void>((resolve) => {
+    signalPendingRequest = resolve;
+  });
+  const pendingStreamHandler = async (route: Route) => {
+    signalPendingRequest();
+    await pendingRequest;
+    await route.abort("aborted").catch(() => undefined);
+  };
 
-  await page.route(
-    "**/api/admin/studio/agents/*/a2a/rest/message:stream",
-    (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        body: 'data: {"error":{"code":"RETRYABLE","message":"可恢复的远端错误"}}\n\n',
-      }),
-  );
-  await composer.fill("验证失败后继续发送");
-  await send.click();
-  const alert = page.getByRole("alert");
-  await expect(alert).toContainText("可恢复的远端错误");
-  await expect(composer).toBeEnabled();
-  await alert.getByRole("button", { name: "关闭" }).click();
-  await expect(alert).toBeHidden();
-  await page.unroute("**/api/admin/studio/agents/*/a2a/rest/message:stream");
+  await page.route(streamRoute, pendingStreamHandler);
+  try {
+    await composer.fill("请开始分析 AAPL，并先给出一句简短结论。 ");
+    await send.click();
+    await interceptedRequest;
+
+    const stop = page.getByRole("button", { name: "停止生成" });
+    await expect(stop).toBeVisible();
+    await expect(stop).toBeEnabled();
+    await stop.click();
+    releasePendingRequest();
+
+    await expect(stop).toHaveCount(0);
+    await expect(composer).toBeEnabled();
+  } finally {
+    releasePendingRequest();
+    await page.unroute(streamRoute, pendingStreamHandler);
+  }
+
+  const recoveryStreamHandler = (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: 'data: {"error":{"code":"RETRYABLE","message":"可恢复的远端错误"}}\n\n',
+    });
+  await page.route(streamRoute, recoveryStreamHandler);
+  try {
+    await composer.fill("验证失败后继续发送");
+    await send.click();
+    const alert = page.getByRole("alert");
+    await expect(alert).toContainText("可恢复的远端错误");
+    await expect(composer).toBeEnabled();
+    await alert.getByRole("button", { name: "关闭" }).click();
+    await expect(alert).toBeHidden();
+  } finally {
+    await page.unroute(streamRoute, recoveryStreamHandler);
+  }
 
   await page.keyboard.press("Control+Shift+N");
   await expect(page.locator('[data-message-role="user"]')).toHaveCount(0);

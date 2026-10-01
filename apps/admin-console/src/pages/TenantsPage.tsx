@@ -331,7 +331,7 @@ function TenantForm({
           ].map(([label, key]) => (
             <Field key={key} label={label}>
               <InputNumber
-                style={{ width: "100%" }}
+                className={styles.fullWidthControl}
                 min={1}
                 value={form[key as keyof typeof form] as number}
                 onChange={(value) => change(key, Number(value))}

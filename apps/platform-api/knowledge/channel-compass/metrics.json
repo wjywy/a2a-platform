@@ -1,0 +1,31 @@
+{
+  "id": "channel-metrics",
+  "title": "渠道经营指标口径",
+  "entries": [
+    {
+      "key": "metrics.gmv",
+      "title": "GMV",
+      "content": "统计期内已支付订单的商品成交总额；退款是否回冲必须沿用数据源声明的同一口径，跨渠道比较时不得混用。"
+    },
+    {
+      "key": "metrics.gross_margin",
+      "title": "毛利与毛利率",
+      "content": "毛利等于确认收入减商品成本及已纳入口径的渠道费用；毛利率等于毛利除以确认收入。"
+    },
+    {
+      "key": "metrics.roi",
+      "title": "投放 ROI",
+      "content": "投放 ROI 等于归因成交金额除以投放消耗。归因窗口、自然流量是否剔除和退款回冲规则必须与数据源一致。"
+    },
+    {
+      "key": "metrics.return_rate",
+      "title": "退货率",
+      "content": "退货率必须同时标明分母口径（支付件数、发货件数或签收件数）和观察窗口，避免近期订单尚未充分暴露退货造成低估。"
+    },
+    {
+      "key": "metrics.inventory_turnover",
+      "title": "库存周转",
+      "content": "库存周转天数应使用同一成本口径的平均库存与销售成本计算；渠道库存与共享库存需避免重复计数。"
+    }
+  ]
+}

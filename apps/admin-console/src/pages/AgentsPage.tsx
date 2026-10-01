@@ -781,7 +781,7 @@ function AgentEditForm({
         <div className={styles.limitGrid}>
           <Field label="超时 ms">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={1000}
               value={form.invocationPolicy.timeoutMs}
               onChange={(number) =>
@@ -797,7 +797,7 @@ function AgentEditForm({
           </Field>
           <Field label="重试次数">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={0}
               max={5}
               value={form.invocationPolicy.maxRetries}
@@ -814,7 +814,7 @@ function AgentEditForm({
           </Field>
           <Field label="最大并发">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={1}
               value={form.invocationPolicy.maxConcurrent}
               onChange={(number) =>
@@ -920,7 +920,7 @@ function InstanceForm({
         <div className={styles.limitGrid}>
           <Field label="流量权重">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={1}
               max={10000}
               value={form.weight}
@@ -934,7 +934,7 @@ function InstanceForm({
           </Field>
           <Field label="故障转移优先级">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={1}
               max={10000}
               value={form.priority}

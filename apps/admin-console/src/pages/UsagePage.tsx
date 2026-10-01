@@ -91,7 +91,7 @@ export function UsagePage() {
         <div className={styles.toolbar}>
           <Input
             type="date"
-            style={{ width: 160 }}
+            className={styles.dateFilter}
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />

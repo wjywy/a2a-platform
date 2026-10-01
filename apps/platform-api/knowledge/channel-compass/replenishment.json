@@ -1,0 +1,26 @@
+{
+  "id": "channel-replenishment",
+  "title": "智能补货策略",
+  "entries": [
+    {
+      "key": "replenishment.priority",
+      "title": "补货优先级",
+      "content": "优先级由预测缺货时间、补货提前期、近期销量趋势、毛利贡献和在途库存共同决定，不得只按当前库存量排序。"
+    },
+    {
+      "key": "replenishment.quantity",
+      "title": "建议补货量",
+      "content": "建议补货量应覆盖提前期需求与安全库存，并扣减可用库存和可信在途量；促销增量必须有明确活动计划或工具证据。"
+    },
+    {
+      "key": "replenishment.guardrail",
+      "title": "滞销保护",
+      "content": "高退货、低毛利或周转持续变慢的 SKU 即使短期销量较高，也应触发人工复核或降低补货上限。"
+    },
+    {
+      "key": "replenishment.execution",
+      "title": "执行顺序",
+      "content": "先处理预计缺货早于补货到货日的 SKU，再处理安全库存不足项；每次执行需记录建议量、依据和复核人。"
+    }
+  ]
+}

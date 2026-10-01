@@ -68,6 +68,33 @@ export const config = {
   // In Docker development this is http://api:3000, avoiding a host-network hairpin.
   // Production may leave it equal to PLATFORM_ORIGIN.
   symbolInternalOrigin: (process.env.SYMBOL_INTERNAL_ORIGIN || process.env.PLATFORM_ORIGIN || "http://localhost:8080").replace(/\/$/, ""),
+  channelCompassInternalToken:
+    process.env.CHANNEL_COMPASS_INTERNAL_TOKEN ||
+    process.env.SYMBOL_INTERNAL_TOKEN ||
+    (process.env.NODE_ENV === "production"
+      ? ""
+      : "local-channel-compass-internal-token"),
+  channelCompassInternalOrigin: (
+    process.env.CHANNEL_COMPASS_INTERNAL_ORIGIN ||
+    process.env.SYMBOL_INTERNAL_ORIGIN ||
+    process.env.PLATFORM_ORIGIN ||
+    "http://localhost:8080"
+  ).replace(/\/$/, ""),
+  channelDataApiBaseUrl: (process.env.CHANNEL_DATA_API_BASE_URL ?? "").replace(
+    /\/$/,
+    "",
+  ),
+  channelDataApiToken: process.env.CHANNEL_DATA_API_TOKEN ?? "",
+  channelDataApiTimeoutMs: Number(
+    process.env.CHANNEL_DATA_API_TIMEOUT_MS ?? 15_000,
+  ),
+  channelChartSigningSecret:
+    process.env.CHANNEL_CHART_SIGNING_SECRET ||
+    process.env.PLATFORM_JWT_SECRET ||
+    "local-channel-chart-signing-secret",
+  channelChartTtlSeconds: Number(
+    process.env.CHANNEL_CHART_TTL_SECONDS ?? 604_800,
+  ),
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",
   deepseekModel: process.env.DEEPSEEK_MODEL ?? "deepseek-chat",
   finnhubApiKey: process.env.FINNHUB_API_KEY ?? "",

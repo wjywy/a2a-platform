@@ -2,6 +2,8 @@ import { useState } from "react";
 import {
   CloseOutlined,
   DeleteOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
   DownloadOutlined,
   EditOutlined,
   EllipsisOutlined,
@@ -191,7 +193,13 @@ function HistoryEmpty() {
   );
 }
 
-export function StudioHistory() {
+export function StudioHistory({
+  collapsed,
+  onCollapsedChange,
+}: {
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+}) {
   const studio = useStudio();
   const data = studio.history.state.data;
   const totalPages = data?.totalPages ?? 1;
@@ -200,8 +208,8 @@ export function StudioHistory() {
   return (
     <>
       <aside
-        className={`${styles.historyPanel} ${
-          studio.panels.historyOpen ? styles.historyPanelOpen : ""
+        className={`${styles.historyPanel} ${studio.panels.historyOpen ? styles.historyPanelOpen : ""} ${
+          collapsed ? styles.historyPanelCollapsed : ""
         }`}
         aria-label="会话管理"
       >
@@ -215,6 +223,18 @@ export function StudioHistory() {
               <small>在线调试</small>
             </span>
           </div>
+          <Tooltip title={collapsed ? "展开会话历史" : "收起会话历史"}>
+            <Button
+              className={styles.historyCollapseButton}
+              type="text"
+              aria-label={collapsed ? "展开会话历史" : "收起会话历史"}
+              aria-expanded={!collapsed}
+              icon={
+                collapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />
+              }
+              onClick={() => onCollapsedChange(!collapsed)}
+            />
+          </Tooltip>
           <Tooltip title="关闭会话历史">
             <Button
               className={styles.historyCloseButton}

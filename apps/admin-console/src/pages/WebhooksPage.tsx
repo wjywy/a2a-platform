@@ -95,7 +95,7 @@ export function WebhooksPage() {
           actions={
             <>
               <Select
-                style={{ minWidth: 170 }}
+                className={styles.tenantSelect}
                 value={tenantId}
                 options={tenants.map((tenant) => ({
                   value: tenant.id,
@@ -336,7 +336,7 @@ function WebhookForm({
         <div className={styles.limitGrid}>
           <Field label="超时 ms">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={500}
               max={30000}
               value={form.timeoutMs}
@@ -347,7 +347,7 @@ function WebhookForm({
           </Field>
           <Field label="最大尝试">
             <InputNumber
-              style={{ width: "100%" }}
+              className={styles.fullWidthControl}
               min={1}
               max={12}
               value={form.maxAttempts}

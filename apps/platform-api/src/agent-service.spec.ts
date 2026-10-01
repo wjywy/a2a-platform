@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { AgentCard } from "@a2a-js/sdk";
 import { config } from "./config.js";
 import {
+  builtInUpstreamUrl,
+  isTrustedBuiltInInternalUrl,
   isTrustedSymbolInternalUrl,
   normalizeLocalDevelopmentEndpoints,
   platformCard,
@@ -165,6 +167,32 @@ describe("bundled Symbol internal routing", () => {
     } finally {
       config.platformOrigin = platformOrigin;
       config.symbolInternalOrigin = symbolInternalOrigin;
+    }
+  });
+});
+
+describe("bundled Channel Compass internal routing", () => {
+  it("rewrites only the configured Channel Compass built-in path", () => {
+    const platformOrigin = config.platformOrigin;
+    const internalOrigin = config.channelCompassInternalOrigin;
+    try {
+      config.platformOrigin = "https://a2a-platform.com";
+      config.channelCompassInternalOrigin = "http://api:3000";
+      const internal = builtInUpstreamUrl(
+        "https://a2a-platform.com/api/builtin/channel-compass/.well-known/agent-card.json",
+      );
+      expect(internal).toBe(
+        "http://api:3000/api/builtin/channel-compass/.well-known/agent-card.json",
+      );
+      expect(isTrustedBuiltInInternalUrl(internal)).toBe(true);
+      expect(
+        isTrustedBuiltInInternalUrl(
+          "http://other-api:3000/api/builtin/channel-compass",
+        ),
+      ).toBe(false);
+    } finally {
+      config.platformOrigin = platformOrigin;
+      config.channelCompassInternalOrigin = internalOrigin;
     }
   });
 });

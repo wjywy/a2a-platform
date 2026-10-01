@@ -163,3 +163,15 @@ description: "Executable task list for the unified light console workspace"
 - [ ] T037 Run 200% text, forced-colors, Firefox, iOS Safari and Android Chrome validation for keyboard, contrast and reflow per FR-027 and SC-007 through SC-008 (partial).
 - [ ] T038 With a healthy callable Agent runtime, record a PC and mobile terminal `TASK_STATE_COMPLETED` reply, stop and recovery flow per FR-019 through FR-021 and SC-006 (partial).
 - [ ] T039 Collect acceptance-environment response samples and complete manual visual sign-off for feedback timing and layout hierarchy per SC-009 and SC-010 (partial).
+## Phase 10: Audit-Driven ChatGPT UI Parity — 2026-09-13
+
+- [ ] T040 Convert the P0-P2 findings in `chatgpt-ui-difference-audit.md` into a neutral light, conversation-first implementation baseline in `DESIGN.md`, while retaining the existing business and accessibility contracts.
+- [ ] T041 Replace the warm-gray theme with a neutral white/gray surface ladder and align Ant Design/global interaction tokens in `apps/admin-console/src/styles/design-tokens.css`, `apps/admin-console/src/theme.ts`, and `apps/admin-console/src/index.css`.
+- [ ] T042 Rework desktop and mobile shell hierarchy in `apps/admin-console/src/ConsoleShell.module.css` and `apps/admin-console/src/Layout.tsx`: quieter collapsible-context styling, compact local header, white main canvas, and Studio-specific navigation suppression.
+- [ ] T043 Rework Studio history, conversation, transcript, composer and auxiliary panels into one conversation-first workspace in `apps/admin-console/src/components/studio/AgentStudio.module.css` and the existing `Studio*.tsx` components without changing real conversation behavior.
+- [ ] T044 Reduce management-page card, border and dashboard density; normalize tables, metrics, forms and states in `apps/admin-console/src/App.module.css`, `apps/admin-console/src/ui.tsx`, and the existing page components.
+- [ ] T045 Simplify authentication into a low-noise single-entry light surface and remove remaining inline/hard-coded visual drift in `apps/admin-console/src/pages/AuthPage.module.css` and applicable page components.
+- [ ] T046 Update Playwright assertions in `tests/e2e/console.spec.ts`, `tests/e2e/agent-studio.spec.ts`, and `tests/e2e/studio-product.spec.ts` for the new neutral palette, shell geometry, Studio reading column and mobile behavior.
+- [ ] T047 Run CSS static audits for forbidden gradients/glass/`transition: all`, warm-gray literals, unguarded hover, accidental overflow, token drift and incomplete selector coverage; record results in `checklists/implementation-evidence.md`.
+- [ ] T048 Run the console build and focused desktop/mobile Playwright matrix at 1440, 1024, 768, 390 and 375 effective widths; update `quickstart.md` and evidence with exact results.
+- [ ] T049 Complete the remaining feasible convergence checks from T036-T039, document environment-only gaps without claiming success, then commit, push to `origin/main`, wait for CI/deploy and verify the public console and `/healthz`.

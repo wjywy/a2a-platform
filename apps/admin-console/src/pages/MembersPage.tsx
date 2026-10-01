@@ -101,7 +101,7 @@ export function MembersPage() {
           actions={
             <>
               <Select
-                style={{ minWidth: 170 }}
+                className={styles.tenantSelect}
                 value={tenantId}
                 options={tenants.map((tenant) => ({
                   value: tenant.id,

@@ -392,6 +392,80 @@ test("debug studio keeps its server-side configuration drawer after refresh", as
   await expect(page.getByRole("textbox", { name: "给 Agent 发送消息" })).toBeVisible();
 });
 
+test("Studio conversation shell keeps neutral surfaces, collapsible history, and touch-safe controls", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/debug");
+
+  const workspace = page.getByTestId("studio-workspace");
+  const conversation = page.getByLabel("Agent 对话", { exact: true });
+  const history = page.getByLabel("会话管理", { exact: true });
+  const composer = page.getByRole("form", { name: "消息输入区" });
+
+  await expect(workspace).toBeVisible();
+  await expect(conversation).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+  await expect(history).toHaveCSS("background-color", "rgb(249, 249, 249)");
+  await expect(composer).toHaveCSS("background-color", "rgb(244, 244, 244)");
+  await expect(composer).toHaveCSS("border-radius", "24px");
+
+  if (testInfo.project.name.includes("mobile")) {
+    const openHistory = page.getByRole("button", { name: "打开会话历史" });
+    const firstViewportTargets = [
+      page.getByRole("button", { name: "返回控制台" }),
+      openHistory,
+      composer.getByRole("button", { name: "打开 Agent 调用配置" }),
+      composer.getByRole("button", { name: "发送" }),
+    ];
+
+    for (const target of firstViewportTargets) {
+      await expect(target).toBeVisible();
+      const box = await target.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+
+    await openHistory.click();
+    await expect(history).toBeVisible();
+
+    const drawerTargets = [
+      history.getByRole("button", { name: "关闭会话历史" }),
+      history.getByRole("button", { name: "新建会话" }),
+    ];
+    for (const target of drawerTargets) {
+      await expect(target).toBeVisible();
+      const box = await target.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+    return;
+  }
+
+  await expect
+    .poll(async () => (await history.boundingBox())?.width)
+    .toBeCloseTo(260, 0);
+
+  await page.getByRole("button", { name: "收起会话历史" }).click();
+  const expandHistory = page.getByRole("button", { name: "展开会话历史" });
+  await expect(expandHistory).toBeVisible();
+  await expect(expandHistory).toHaveAttribute("aria-expanded", "false");
+  await expect
+    .poll(async () => (await history.boundingBox())?.width)
+    .toBeCloseTo(64, 0);
+
+  await expandHistory.click();
+  const collapseHistory = page.getByRole("button", { name: "收起会话历史" });
+  await expect(collapseHistory).toBeVisible();
+  await expect(collapseHistory).toHaveAttribute("aria-expanded", "true");
+  await expect
+    .poll(async () => (await history.boundingBox())?.width)
+    .toBeCloseTo(260, 0);
+});
+
 test("desktop console keeps visited page state and avoids duplicate reloads", async ({
   page,
 }, testInfo) => {
@@ -484,26 +558,33 @@ test("Agent management hover states do not introduce dark or shifting borders", 
   await sidebarRegister.hover();
   await expect(sidebarRegister).toHaveCSS(
     "background-color",
-    "rgb(229, 229, 223)",
+    "rgb(236, 236, 236)",
   );
 
   const register = page
     .getByRole("main")
     .getByRole("button", { name: /注册 Agent/ });
-  await expect(register).toHaveCSS("background-color", "rgb(41, 41, 37)");
+  await expect(register).toHaveCSS("background-color", "rgb(33, 33, 33)");
   await register.hover();
-  await expect(register).toHaveCSS("background-color", "rgb(58, 58, 53)");
+  await expect(register).toHaveCSS("background-color", "rgb(47, 47, 47)");
 
   const readBorder = (locator: import("@playwright/test").Locator) =>
     locator.evaluate((element) => {
       const style = getComputedStyle(element);
+      const colorChannels =
+        style.borderColor.match(/[\d.]+/g)?.map(Number) ?? [];
+      const alpha =
+        style.borderColor === "transparent"
+          ? 0
+          : style.borderColor.startsWith("rgba")
+            ? (colorChannels[3] ?? 1)
+            : 1;
       return {
         width: style.borderWidth,
         color: style.borderColor,
         style: style.borderStyle,
-        darkestChannel: Math.min(
-          ...(style.borderColor.match(/\d+/g) ?? []).map(Number),
-        ),
+        alpha,
+        darkestChannel: Math.min(...colorChannels.slice(0, 3)),
       };
     });
 
@@ -539,7 +620,13 @@ test("Agent management hover states do not introduce dark or shifting borders", 
   const tileHover = await readBorder(card);
   expect(tileHover.width).toBe(tileBefore.width);
   expect(tileHover.style).toBe(tileBefore.style);
-  expect(tileHover.darkestChannel).toBeGreaterThanOrEqual(175);
+  const borderIsInvisible =
+    Number.parseFloat(tileHover.width) === 0 ||
+    tileHover.color === "transparent" ||
+    tileHover.alpha === 0;
+  expect(
+    borderIsInvisible || tileHover.darkestChannel >= 175,
+  ).toBeTruthy();
 
   const tileMotion = await card.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -752,7 +839,7 @@ test("light workspace preserves its surface hierarchy and five-item mobile navig
     bodyBackground: getComputedStyle(document.body).backgroundColor,
   }));
   expect(viewport.documentWidth).toBeLessThanOrEqual(viewport.viewportWidth + 1);
-  expect(viewport.bodyBackground).toBe("rgb(244, 244, 242)");
+  expect(viewport.bodyBackground).toBe("rgb(255, 255, 255)");
 
   if (testInfo.project.name.includes("mobile")) {
     const mobileNav = page.getByRole("navigation", { name: "移动端主导航" });
@@ -787,7 +874,7 @@ test("light workspace preserves its surface hierarchy and five-item mobile navig
         topbar: topbar ? getComputedStyle(topbar).backgroundColor : "",
       };
     });
-    expect(surfaces.sidebar).toBe("rgb(236, 236, 232)");
+    expect(surfaces.sidebar).toBe("rgb(249, 249, 249)");
     expect(surfaces.topbar).toBe("rgb(255, 255, 255)");
   }
 });

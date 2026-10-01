@@ -14,6 +14,7 @@ import { config } from "./config.js";
 import { prometheusMetrics, readiness } from "./operations-service.js";
 import { symbolRouter } from "./symbol-router.js";
 import { memoryRouter } from "./memory-router.js";
+import { channelCompassRouter } from "./channel-compass-router.js";
 
 export function createApp() {
   requireConfiguredJwtSecret();
@@ -81,6 +82,7 @@ export function createApp() {
   app.use(memoryRouter);
   app.use("/api/admin", adminRouter);
   app.use(symbolRouter);
+  app.use(channelCompassRouter);
   app.use(gatewayRouter);
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);

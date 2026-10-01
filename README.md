@@ -230,11 +230,26 @@ npm run down
 | `MAX_A2A_STREAM_EVENTS`          | `10000`                                                   | 单次流最大事件数                                           |
 | `MAX_A2A_CALL_DURATION_MS`       | `300000`                                                  | 不可由租户放大的调用上限                                   |
 | `SYMBOL_INTERNAL_TOKEN`          | 随机 32 字节令牌                                          | 平台调用内置 Symbol Agent 的私有凭据                       |
+| `CHANNEL_COMPASS_INTERNAL_TOKEN` | 随机 32 字节令牌                                          | 平台调用内置渠道罗盘的私有凭据；未配置时复用 Symbol 令牌   |
+| `CHANNEL_DATA_API_BASE_URL`      | `https://data.example.com/`                               | 渠道罗盘真实数据工具服务基地址                             |
+| `CHANNEL_DATA_API_TOKEN`         | 服务端 Bearer Token                                       | 渠道数据 API 凭据，不进入浏览器                            |
+| `CHANNEL_CHART_SIGNING_SECRET`   | 独立随机密钥                                              | 渠道图表限时链接签名；未配置时复用平台 JWT 密钥            |
 | `DEEPSEEK_API_KEY`               | `sk-...`                                                  | 自然语言意图提取与最终对话回复；未配置时不会回退为固定文案 |
 | `DEEPSEEK_MODEL`                 | `deepseek-chat`                                           | 意图提取与对话回复模型                                     |
 | `FINNHUB_API_KEY`                | 可选                                                      | 为后续扩展保留的新闻数据源凭据                             |
 
 生产必须使用随机 JWT 密钥、关闭开发 Token、关闭私网出站、配置 TLS、备份和监控。
+
+### 渠道罗盘数据工具契约
+
+内置 `channel-compass` Agent 会根据意图调用以下真实工具：
+
+- `get_channel_overview`
+- `get_channel_attribution`
+- `detect_channel_anomalies`
+- `get_replenishment_priority`
+
+平台向 `${CHANNEL_DATA_API_BASE_URL}/tools/{tool-name}` 发送 POST JSON，请求包含租户、原始问题、渠道、统计周期、任务和上下文 ID。响应必须包含 `source`、`asOf`、`conclusion`、`facts`、`reasons`、`actions` 和可绘制的 `chart`。结构不合规、数据源未配置或缺少图表时，Agent 会失败并明确说明，不会生成模拟数据。成功结果会结合 `apps/platform-api/knowledge/channel-compass/` 的指标口径与策略，按“结论 → 数据依据 → 原因分析 → 行动建议”输出，并生成有时效签名的 SVG 图表链接。
 
 ## 用户自助注册与 Agent 目录
 

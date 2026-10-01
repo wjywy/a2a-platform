@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { StudioComposer } from "./StudioComposer";
 import { useStudio } from "./StudioContext";
 import { StudioHeader } from "./StudioHeader";
@@ -19,6 +19,7 @@ export function StudioWorkspace({
 }) {
   const studio = useStudio();
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
   useStudioKeyboardShortcuts(studio);
   useStudioVisualViewport(workspaceRef);
   useStudioScrollLock();
@@ -26,10 +27,15 @@ export function StudioWorkspace({
   return (
     <div
       ref={workspaceRef}
-      className={styles.studioWorkspace}
+      className={`${styles.studioWorkspace} ${
+        historyCollapsed ? styles.studioWorkspaceHistoryCollapsed : ""
+      }`}
       data-testid="studio-workspace"
     >
-      <StudioHistory />
+      <StudioHistory
+        collapsed={historyCollapsed}
+        onCollapsedChange={setHistoryCollapsed}
+      />
       <main className={styles.conversationWorkspace}>
         <StudioHeader onExitStudio={onExitStudio} />
         <section className={styles.conversationSurface} aria-label="Agent 对话">

@@ -260,7 +260,6 @@ export function Layout({
       <main className={styles.main}>
         <header className={styles.topbar}>
           <div>
-            <p>控制中心 / {title.title}</p>
             <h1>{title.title}</h1>
             <span>{title.description}</span>
           </div>
