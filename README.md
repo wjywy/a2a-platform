@@ -231,6 +231,7 @@ npm run down
 | `MAX_A2A_CALL_DURATION_MS`       | `300000`                                                  | 不可由租户放大的调用上限                                   |
 | `SYMBOL_INTERNAL_TOKEN`          | 随机 32 字节令牌                                          | 平台调用内置 Symbol Agent 的私有凭据                       |
 | `CHANNEL_COMPASS_INTERNAL_TOKEN` | 随机 32 字节令牌                                          | 平台调用内置渠道罗盘的私有凭据；未配置时复用 Symbol 令牌   |
+| `CHANNEL_DATA_MODE`              | `mock` 或 `api`                                           | 渠道数据模式；默认 Mock，接入真实数据后切换为 `api`        |
 | `CHANNEL_DATA_API_BASE_URL`      | `https://data.example.com/`                               | 渠道罗盘真实数据工具服务基地址                             |
 | `CHANNEL_DATA_API_TOKEN`         | 服务端 Bearer Token                                       | 渠道数据 API 凭据，不进入浏览器                            |
 | `CHANNEL_CHART_SIGNING_SECRET`   | 独立随机密钥                                              | 渠道图表限时链接签名；未配置时复用平台 JWT 密钥            |
@@ -249,7 +250,7 @@ npm run down
 - `detect_channel_anomalies`
 - `get_replenishment_priority`
 
-平台向 `${CHANNEL_DATA_API_BASE_URL}/tools/{tool-name}` 发送 POST JSON，请求包含租户、原始问题、渠道、统计周期、任务和上下文 ID。响应必须包含 `source`、`asOf`、`conclusion`、`facts`、`reasons`、`actions` 和可绘制的 `chart`。结构不合规、数据源未配置或缺少图表时，Agent 会失败并明确说明，不会生成模拟数据。成功结果会结合 `apps/platform-api/knowledge/channel-compass/` 的指标口径与策略，按“结论 → 数据依据 → 原因分析 → 行动建议”输出，并生成有时效签名的 SVG 图表链接。
+`CHANNEL_DATA_MODE=mock` 时使用明确标注的内置演示数据；每份报告都会显示 Mock 警告，不得作为真实经营或财务依据。切换为 `CHANNEL_DATA_MODE=api` 后，平台向 `${CHANNEL_DATA_API_BASE_URL}/tools/{tool-name}` 发送 POST JSON，请求包含租户、原始问题、渠道、统计周期、任务和上下文 ID。响应必须包含 `source`、`asOf`、`conclusion`、`facts`、`reasons`、`actions` 和可绘制的 `chart`。结构不合规、数据源未配置或缺少图表时，Agent 会失败并明确说明，不会自行补写真实数据。成功结果会结合 `apps/platform-api/knowledge/channel-compass/` 的指标口径与策略，按“结论 → 数据依据 → 原因分析 → 行动建议”输出，并生成有时效签名的 SVG 图表链接。
 
 ## 用户自助注册与 Agent 目录
 

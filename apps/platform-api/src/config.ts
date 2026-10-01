@@ -84,6 +84,9 @@ export const config = {
     /\/$/,
     "",
   ),
+  channelDataMode:
+    process.env.CHANNEL_DATA_MODE ||
+    (process.env.CHANNEL_DATA_API_BASE_URL ? "api" : "mock"),
   channelDataApiToken: process.env.CHANNEL_DATA_API_TOKEN ?? "",
   channelDataApiTimeoutMs: Number(
     process.env.CHANNEL_DATA_API_TIMEOUT_MS ?? 15_000,

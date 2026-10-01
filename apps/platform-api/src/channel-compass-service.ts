@@ -8,7 +8,7 @@ import {
 } from "./channel-compass-knowledge.js";
 import {
   ChannelDataApiError,
-  httpChannelToolInvoker,
+  channelToolInvoker,
   type ChannelIntent,
   type ChannelToolInput,
   type ChannelToolInvoker,
@@ -190,6 +190,7 @@ function reportMarkdown(input: {
   const sources = input.results
     .map(({ result }) => `${result.source}（截至 ${result.asOf}）`)
     .filter((value, index, values) => values.indexOf(value) === index);
+  const usesMock = input.results.some(({ result }) => result.mode === "mock");
   const conclusions = input.results.map(
     ({ result }) => `- **${result.title}**：${result.conclusion}`,
   );
@@ -212,6 +213,12 @@ function reportMarkdown(input: {
   return [
     "# 渠道罗盘分析",
     "",
+    ...(usesMock
+      ? [
+          "> ⚠️ **当前为 Mock 演示数据，不代表真实店铺经营情况，不可直接用于经营或财务决策。**",
+          "",
+        ]
+      : []),
     `> 数据来源：${sources.join("；")}  `,
     `> 已调用：${input.results.map(({ tool }) => `\`${tool}\``).join("、")}、\`create_channel_visualization\``,
     "",
@@ -263,7 +270,7 @@ export async function executeChannelAnalysis(
   },
   dependencies: ChannelAnalysisDependencies = {},
 ): Promise<ChannelAnalysisArtifact> {
-  const toolInvoker = dependencies.toolInvoker ?? httpChannelToolInvoker;
+  const toolInvoker = dependencies.toolInvoker ?? channelToolInvoker;
   const knowledgeLoader = dependencies.loadKnowledge ?? loadChannelKnowledge;
   const visualizationCreator =
     dependencies.createVisualization ?? createChannelVisualization;
